@@ -375,13 +375,17 @@ export class ApiClient {
   /**
    * Fetch photos for date range
    */
-  async fetchPhotos({ start_at, end_at }) {
+  async fetchPhotos({ start_at, end_at, album_source, album_id }) {
     // Photos API uses start_date/end_date parameters
     // Pass dates as-is (matching V1 behavior)
     const params = new URLSearchParams({
       start_date: start_at,
       end_date: end_at,
     })
+    if (album_source && album_id) {
+      params.set("album_source", album_source)
+      params.set("album_id", album_id)
+    }
 
     const url = `${this.baseURL}/photos?${params}`
 

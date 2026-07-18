@@ -9,7 +9,9 @@
      data-trip-maplibre-ended-at-value="<%= @trip.ended_at.iso8601 %>"
      data-trip-maplibre-trip-id-value="<%= @trip.id %>"
      data-trip-maplibre-path-data-value="<%= @trip.path&.coordinates&.to_json %>"
-     data-trip-maplibre-map-style-value="<%= current_user.safe_settings.settings['maps_maplibre_style'] || 'light' %>">
+     data-trip-maplibre-map-style-value="<%= current_user.safe_settings.settings['maps_maplibre_style'] || 'light' %>"
+     data-trip-maplibre-photo-album-source-value="<%= @trip.photo_album&.dig(:source) %>"
+     data-trip-maplibre-photo-album-id-value="<%= @trip.photo_album&.dig(:id) %>">
 
   <%# Side-by-side layout: map card left (capped to viewport), scrollable content right %>
   <div class="flex flex-col lg:flex-row gap-6 lg:h-[calc(100dvh-9.75rem)]">
@@ -215,6 +217,9 @@
             <% end %>
             <% link_sources = @photo_sources.presence || [@trip.photo_album[:source]] %>
             <% link_sources.each do |source| %>
+              <%# No external link when the source's integration was removed —
+                  its base URL is gone, so the href would be a dead relative path. %>
+              <% next if current_user.settings["#{source}_url"].blank? %>
               <% link_url = if @trip.photo_album && @trip.photo_album[:source] == source
                               photo_album_url(source, current_user.settings, @trip.photo_album_id)
                             else

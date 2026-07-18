@@ -7,11 +7,14 @@ class Api::V1::PhotosController < ApiController
   before_action :check_source, only: %i[thumbnail]
 
   def index
-    cache_key = "photos_#{current_api_user.id}_#{params[:start_date]}_#{params[:end_date]}"
+    album = album_param
+    cache_key = "photos_#{current_api_user.id}_#{params[:start_date]}_#{params[:end_date]}" \
+                "_#{album&.dig(:source)}_#{album&.dig(:id)}"
     cached_photos = Rails.cache.read(cache_key)
     return render json: cached_photos, status: :ok if cached_photos.present?
 
-    search = Photos::Search.new(current_api_user, start_date: params[:start_date], end_date: params[:end_date])
+    search = Photos::Search.new(current_api_user, start_date: params[:start_date], end_date: params[:end_date],
+                                                  album: album)
     @photos = search.call
     Rails.cache.write(cache_key, @photos, expires_in: 30.minutes) if search.errors.blank? && @photos.present?
 
@@ -27,6 +30,17 @@ class Api::V1::PhotosController < ApiController
   end
 
   private
+
+  # Optional album filter (used by the trip page's map photo overlay so the
+  # markers match the album-filtered gallery). Ignored unless both parts are
+  # present and the source is known.
+  def album_param
+    source = params[:album_source].to_s
+    id = params[:album_id].to_s
+    return nil unless %w[immich photoprism].include?(source) && id.match?(/\A[0-9a-zA-Z-]{1,64}\z/)
+
+    { source: source, id: id }
+  end
 
   def handle_thumbnail_response(upstream)
     if upstream.success?

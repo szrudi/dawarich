@@ -58,6 +58,8 @@ export default class extends Controller {
     tripId: Number,
     pathData: String,
     mapStyle: { type: String, default: "light" },
+    photoAlbumSource: String,
+    photoAlbumId: String,
   }
 
   async connect() {
@@ -421,6 +423,8 @@ export default class extends Controller {
         const photos = await apiClient.fetchPhotos({
           start_at: this.startedAtValue,
           end_at: this.endedAtValue,
+          album_source: this.photoAlbumSourceValue,
+          album_id: this.photoAlbumIdValue,
         })
         this.photosGeoJSON = this.photosToGeoJSON(photos)
       } catch (e) {
