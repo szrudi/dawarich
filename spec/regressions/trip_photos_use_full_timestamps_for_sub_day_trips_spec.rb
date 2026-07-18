@@ -24,8 +24,9 @@ RSpec.describe 'Trip photos use full timestamps when searching for assets' do
         expect(kwargs[:start_date]).to eq('2024-03-29T08:00:00Z')
         expect(kwargs[:end_date]).to   eq('2024-03-29T20:00:00Z')
         expect(kwargs[:start_date]).not_to eq(kwargs[:end_date]),
-                                           'sub-day trip bounds collapsed to the same value; downstream Immich/Photoprism ' \
-                                           'filtering will reject every photo because takenAfter == takenBefore'
+                                           'sub-day trip bounds collapsed to the same value; downstream ' \
+                                           'Immich/Photoprism filtering will reject every photo because ' \
+                                           'takenAfter == takenBefore'
         photo_search
       end
 
