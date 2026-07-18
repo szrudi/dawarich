@@ -61,4 +61,43 @@ RSpec.describe Photos::Albums do
       end
     end
   end
+
+  describe '.cached' do
+    let(:user) do
+      create(:user, settings: { 'immich_url' => 'http://immich.app', 'immich_api_key' => 'key' })
+    end
+
+    it 'serves the second call from cache without re-fetching' do
+      stub = stub_request(:get, 'http://immich.app/api/albums')
+             .to_return(status: 200, body: [{ 'id' => 'a-1', 'albumName' => 'A', 'assetCount' => 1 }].to_json,
+                        headers: { 'content-type' => 'application/json' })
+
+      2.times { described_class.cached(user) }
+
+      expect(stub).to have_been_requested.once
+    end
+
+    it 'does not cache a failed (empty) fetch' do
+      stub = stub_request(:get, 'http://immich.app/api/albums').to_timeout
+
+      2.times { described_class.cached(user) }
+
+      expect(stub).to have_been_requested.twice
+    end
+
+    it 'refetches after the integration URL changes' do
+      stub_request(:get, 'http://immich.app/api/albums')
+        .to_return(status: 200, body: [{ 'id' => 'a-1', 'albumName' => 'A', 'assetCount' => 1 }].to_json,
+                   headers: { 'content-type' => 'application/json' })
+      new_server = stub_request(:get, 'http://other.app/api/albums')
+                   .to_return(status: 200, body: [].to_json,
+                              headers: { 'content-type' => 'application/json' })
+
+      described_class.cached(user)
+      user.update!(settings: user.settings.merge('immich_url' => 'http://other.app'))
+      described_class.cached(user)
+
+      expect(new_server).to have_been_requested
+    end
+  end
 end

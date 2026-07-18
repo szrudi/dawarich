@@ -49,6 +49,38 @@ RSpec.describe Trip, type: :model do
         expect(trip.reload.photo_album).to be_nil
         expect(trip.photo_album_name).to be_nil
       end
+
+      it 'strips surrounding whitespace from the album id and name' do
+        trip = create(:trip, user: user, photo_album_source: :immich,
+                             photo_album_id: ' abc-123 ', photo_album_name: "  Belgium 2026\n")
+
+        expect(trip.photo_album_id).to eq('abc-123')
+        expect(trip.photo_album_name).to eq('Belgium 2026')
+      end
+
+      it 'rejects an overlong album name' do
+        trip = build(:trip, user: user, photo_album_source: :immich,
+                            photo_album_id: 'abc-123', photo_album_name: 'x' * 256)
+
+        expect(trip).not_to be_valid
+        expect(trip.errors[:photo_album_name]).to be_present
+      end
+
+      it 'clears a stale cached name when the album id changes without a new name' do
+        trip = create(:trip, user: user, photo_album_source: :immich,
+                             photo_album_id: 'abc-123', photo_album_name: 'Old album')
+        trip.update!(photo_album_id: 'def-456')
+
+        expect(trip.reload.photo_album_name).to be_nil
+      end
+
+      it 'keeps the name when id and name change together' do
+        trip = create(:trip, user: user, photo_album_source: :immich,
+                             photo_album_id: 'abc-123', photo_album_name: 'Old album')
+        trip.update!(photo_album_id: 'def-456', photo_album_name: 'New album')
+
+        expect(trip.reload.photo_album_name).to eq('New album')
+      end
     end
 
     context 'date range validation' do

@@ -45,5 +45,19 @@ RSpec.describe 'Api::V1::Photos::Albums', type: :request do
         expect(response).to have_http_status(:unauthorized)
       end
     end
+
+    context 'when a cloud user is on the Lite plan' do
+      let(:user) { create(:user, :with_immich_integration, plan: :lite) }
+
+      before do
+        allow(DawarichSettings).to receive(:self_hosted?).and_return(false)
+      end
+
+      it 'returns forbidden' do
+        get '/api/v1/photos/albums', params: { api_key: user.api_key }
+
+        expect(response).to have_http_status(:forbidden)
+      end
+    end
   end
 end

@@ -6,10 +6,24 @@
 class Photos::Albums
   CACHE_TTL = 5.minutes
 
+  # Blank results are not cached: they can mean "integration briefly down",
+  # and caching that would blank the album picker for the full TTL. The key
+  # carries a fingerprint of the integration URLs so rewiring a server
+  # doesn't serve the previous server's albums.
   def self.cached(user)
-    Rails.cache.fetch("photos_albums/#{user.id}", expires_in: CACHE_TTL) do
-      new(user).call
-    end
+    key = cache_key(user)
+    cached = Rails.cache.read(key)
+    return cached if cached.present?
+
+    result = new(user).call
+    Rails.cache.write(key, result, expires_in: CACHE_TTL) if result.present?
+    result
+  end
+
+  def self.cache_key(user)
+    settings = user.safe_settings
+    fingerprint = Digest::MD5.hexdigest([settings.immich_url, settings.photoprism_url].join('|'))
+    "photos_albums/#{user.id}/#{fingerprint}"
   end
 
   attr_reader :user

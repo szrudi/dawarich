@@ -17,12 +17,15 @@ class Trip < ApplicationRecord
   enum :photo_album_source, { immich: 0, photoprism: 1 }, prefix: :photo_album_source,
                                                           validate: { allow_nil: true }
 
-  normalizes :photo_album_id, :photo_album_name, with: ->(value) { value.presence }
+  normalizes :photo_album_id, :photo_album_name, with: ->(value) { value.to_s.strip.presence }
+
+  before_validation :clear_stale_photo_album_name
 
   validates :name, :started_at, :ended_at, presence: true
   validates :photo_album_id, presence: true, if: -> { photo_album_source.present? }
   validates :photo_album_source, presence: true, if: -> { photo_album_id.present? }
   validates :photo_album_id, format: { with: /\A[0-9a-zA-Z-]{1,64}\z/ }, allow_blank: true
+  validates :photo_album_name, length: { maximum: 255 }
   validate :started_at_before_ended_at
 
   after_create :enqueue_calculation_jobs, unless: :demo?
@@ -75,6 +78,13 @@ class Trip < ApplicationRecord
     return false if demo?
 
     saved_change_to_started_at? || saved_change_to_ended_at?
+  end
+
+  # The cached display name must not outlive the album it was cached for —
+  # a stale name would make the trip badge and the external album link
+  # disagree.
+  def clear_stale_photo_album_name
+    self.photo_album_name = nil if photo_album_id_changed? && !photo_album_name_changed?
   end
 
   def photos

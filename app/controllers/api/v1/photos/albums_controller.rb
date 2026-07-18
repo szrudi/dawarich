@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 class Api::V1::Photos::AlbumsController < ApiController
+  before_action :require_pro_api!
   before_action :check_integration_configured
 
   def index

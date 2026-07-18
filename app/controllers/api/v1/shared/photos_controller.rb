@@ -72,10 +72,12 @@ module Api
           ::Photos::Search.cached(link.user, start_date: range.first, end_date: range.last, album: photo_album)
         end
 
+        # Memoized: this runs on the thumbnail hot path (once per image), and
+        # SharedLink#resource issues a fresh Trip query on every call.
         def photo_album
-          return nil unless link.resource_type.to_sym == :trip
+          return @photo_album if defined?(@photo_album)
 
-          link.resource&.photo_album
+          @photo_album = link.resource_type.to_sym == :trip ? link.resource&.photo_album : nil
         end
 
         def photo_range
