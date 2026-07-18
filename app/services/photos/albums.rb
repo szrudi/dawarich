@@ -22,7 +22,12 @@ class Photos::Albums
 
   def self.cache_key(user)
     settings = user.safe_settings
-    fingerprint = Digest::MD5.hexdigest([settings.immich_url, settings.photoprism_url].join('|'))
+    fingerprint = Digest::MD5.hexdigest(
+      [
+        settings.immich_url, settings.immich_api_key,
+        settings.photoprism_url, settings.photoprism_api_key
+      ].join('|')
+    )
     "photos_albums/#{user.id}/#{fingerprint}"
   end
 

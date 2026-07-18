@@ -116,6 +116,37 @@ RSpec.describe 'Api::V1::Shared::Photos', type: :request do
           .at_least_once
       )
     end
+
+    it 'excludes photos the server returned that are not album members' do
+      member = { 'id' => 'member-1', 'type' => 'IMAGE', 'fileCreatedAt' => 1.day.ago.utc.iso8601,
+                 'exifInfo' => { 'latitude' => 52.0, 'longitude' => 13.0 } }
+      outsider = { 'id' => 'outsider-1', 'type' => 'IMAGE', 'fileCreatedAt' => 1.day.ago.utc.iso8601,
+                   'exifInfo' => { 'latitude' => 52.5, 'longitude' => 13.5 } }
+      stub_request(:post, 'https://immich.example.com/api/search/metadata')
+        .to_return(
+          { status: 200, body: { assets: { items: [member, outsider] } }.to_json,
+            headers: { 'content-type' => 'application/json' } },
+          { status: 200, body: { assets: { items: [] } }.to_json,
+            headers: { 'content-type' => 'application/json' } }
+        )
+      stub_request(:get, %r{immich\.example\.com/api/albums/})
+        .to_return(status: 200, body: { assets: [{ id: 'member-1' }] }.to_json,
+                   headers: { 'content-type' => 'application/json' })
+
+      get "/api/v1/shared/#{link.id}/photos"
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body).map { |p| p['id'] }).to eq(['member-1'])
+    end
+
+    it 'returns no photos when the album asset list cannot be fetched' do
+      stub_request(:get, %r{immich\.example\.com/api/albums/}).to_return(status: 500, body: '')
+
+      get "/api/v1/shared/#{link.id}/photos"
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)).to eq([])
+    end
   end
 
   context 'when a photo falls inside a privacy zone' do
@@ -169,6 +200,8 @@ RSpec.describe 'Api::V1::Shared::Photos', type: :request do
     end
 
     it 'searches photos within the track start_at..end_at range' do
+      # Undo this context's Photos::Search stub — this test asserts the real
+      # outgoing HTTP request.
       allow(Photos::Search).to receive(:new).and_call_original
       immich_owner = create(:user, :with_immich_integration)
       immich_track = create(:track, user: immich_owner,

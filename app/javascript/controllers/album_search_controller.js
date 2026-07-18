@@ -33,7 +33,16 @@ export default class extends BaseController {
   }
 
   async open() {
+    // A previous failure is only retried on an explicit re-open, never per
+    // keystroke, so a down endpoint isn't hammered while the user types.
+    if (this.loadFailed) {
+      this.loadFailed = false
+      this.albumsPromise = null
+    }
     await this.loadAlbums()
+    // The user may have clicked away while the fetch was in flight.
+    if (document.activeElement !== this.inputTarget) return
+
     this.renderList(this.inputTarget.value.trim())
   }
 
@@ -44,6 +53,25 @@ export default class extends BaseController {
     if (this.matchPastedAlbum(query)) return
 
     this.renderList(query)
+  }
+
+  keydown(event) {
+    if (event.key === "Escape") {
+      this.closeList()
+      this.restoreDisplay()
+      return
+    }
+    if (event.key !== "Enter") return
+    if (this.listTarget.classList.contains("hidden")) return
+
+    // Don't let Enter mid-search submit the trip form with a stale selection.
+    event.preventDefault()
+    const first = this.listTarget.querySelector("button")
+    if (first) {
+      first.click()
+    } else {
+      this.closeList()
+    }
   }
 
   select(event) {
@@ -83,11 +111,8 @@ export default class extends BaseController {
       this.loadFailed = false
     } catch (error) {
       console.error("Failed to fetch photo albums:", error)
-      // Leave albums unset and drop the memoized promise so the next
-      // interaction retries instead of showing "No albums found" forever.
       this.albums = null
       this.loadFailed = true
-      this.albumsPromise = null
     }
   }
 
@@ -201,13 +226,16 @@ export default class extends BaseController {
     if (this.element.contains(event.target)) return
 
     this.closeList()
-    // Restore the canonical display: if an album is selected, the input
-    // shows its name again, discarding any dangling search text.
-    if (
-      this.nameTarget.value &&
-      this.inputTarget.value.trim() !== this.nameTarget.value
-    ) {
-      this.inputTarget.value = this.nameTarget.value
+    this.restoreDisplay()
+  }
+
+  // Restore the canonical display: if an album is selected, the input shows
+  // its name (or id, when no name is cached) again, discarding any dangling
+  // search text.
+  restoreDisplay() {
+    const display = this.nameTarget.value || this.idTarget.value
+    if (display && this.inputTarget.value.trim() !== display) {
+      this.inputTarget.value = display
     }
   }
 }

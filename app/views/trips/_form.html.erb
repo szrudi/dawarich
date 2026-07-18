@@ -76,10 +76,10 @@
                    id="trip_photo_album_search"
                    class="input input-bordered w-full pr-10"
                    placeholder="Search albums, or paste an album URL…"
-                   value="<%= trip.photo_album_name %>"
+                   value="<%= trip.photo_album_name || trip.photo_album_id %>"
                    autocomplete="off"
                    data-album-search-target="input"
-                   data-action="focus->album-search#open input->album-search#filter">
+                   data-action="focus->album-search#open input->album-search#filter keydown->album-search#keydown">
             <button type="button"
                     class="btn btn-ghost btn-xs absolute right-2 top-1/2 -translate-y-1/2"
                     title="Clear album"

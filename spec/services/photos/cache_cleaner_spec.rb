@@ -24,8 +24,16 @@ RSpec.describe Photos::CacheCleaner do
         service.call
       end
 
-      it 'calls both delete operations' do
-        expect(Rails.cache).to receive(:delete_matched).twice
+      it 'deletes album and search cache entries for the user' do
+        expect(Rails.cache).to receive(:delete_matched).with("photos_search/#{user.id}/*")
+        expect(Rails.cache).to receive(:delete_matched).with("photos_albums/#{user.id}/*")
+        expect(Rails.cache).to receive(:delete_matched).with("immich_album_assets/#{user.id}/*")
+        expect(Rails.cache).to receive(:delete_matched).with("photoprism_album_exists/#{user.id}/*")
+        service.call
+      end
+
+      it 'calls all delete operations' do
+        expect(Rails.cache).to receive(:delete_matched).exactly(6).times
         service.call
       end
     end
@@ -56,7 +64,7 @@ RSpec.describe Photos::CacheCleaner do
     end
 
     it 'can be called as a class method' do
-      expect(Rails.cache).to receive(:delete_matched).twice
+      expect(Rails.cache).to receive(:delete_matched).exactly(6).times
       described_class.call(user)
     end
 

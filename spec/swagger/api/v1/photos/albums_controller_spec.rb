@@ -6,18 +6,6 @@ RSpec.describe 'Api::V1::Photos::AlbumsController', type: :request do
   let(:user) { create(:user, :with_immich_integration) }
   let(:api_key) { user.api_key }
 
-  before do
-    stub_request(:get, "#{user.settings['immich_url']}/api/albums")
-      .to_return(
-        status: 200,
-        body: [
-          { 'id' => '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c', 'albumName' => 'Belgium trip 2026',
-            'assetCount' => 42 }
-        ].to_json,
-        headers: { 'content-type' => 'application/json' }
-      )
-  end
-
   path '/api/v1/photos/albums' do
     get 'Lists photo albums' do
       tags 'Photos'
@@ -27,6 +15,18 @@ RSpec.describe 'Api::V1::Photos::AlbumsController', type: :request do
       parameter name: :api_key, in: :query, type: :string, required: true, description: 'API Key'
 
       response '200', 'albums found' do
+        before do
+          stub_request(:get, "#{user.settings['immich_url']}/api/albums")
+            .to_return(
+              status: 200,
+              body: [
+                { 'id' => '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c', 'albumName' => 'Belgium trip 2026',
+                  'assetCount' => 42 }
+              ].to_json,
+              headers: { 'content-type' => 'application/json' }
+            )
+        end
+
         schema type: :array,
                items: {
                  type: :object,
@@ -48,6 +48,23 @@ RSpec.describe 'Api::V1::Photos::AlbumsController', type: :request do
 
       response '401', 'no photo integration configured' do
         let(:user) { create(:user) }
+
+        run_test!
+      end
+
+      response '403', 'pro plan required (cloud lite users)' do
+        schema type: :object,
+               properties: {
+                 error: { type: :string },
+                 message: { type: :string },
+                 upgrade_url: { type: :string }
+               }
+
+        let(:user) { create(:user, :with_immich_integration, plan: :lite) }
+
+        before do
+          allow(DawarichSettings).to receive(:self_hosted?).and_return(false)
+        end
 
         run_test!
       end
