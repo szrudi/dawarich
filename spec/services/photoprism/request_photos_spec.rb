@@ -201,6 +201,38 @@ RSpec.describe Photoprism::RequestPhotos do
       end
     end
 
+    context 'when an album uid is given' do
+      let(:service) do
+        described_class.new(user, start_date: start_date, end_date: end_date, album_uid: 'aqnzih81icziiyae')
+      end
+
+      before do
+        stub_request(:any, /photoprism\.local/).to_return(
+          status: 200, body: [].to_json, headers: { 'Content-Type' => 'application/json' }
+        )
+      end
+
+      it 'scopes the request to that album' do
+        service.call
+
+        expect(WebMock).to have_requested(:get, /photoprism\.local/)
+          .with(query: hash_including(s: 'aqnzih81icziiyae'))
+      end
+    end
+
+    context 'when no album uid is given' do
+      it 'does not send an album scope' do
+        stub_request(:any, /photoprism\.local/).to_return(
+          status: 200, body: [].to_json, headers: { 'Content-Type' => 'application/json' }
+        )
+
+        service.call
+
+        expect(WebMock).to(have_requested(:get, /photoprism\.local/)
+          .with { |req| !Rack::Utils.parse_query(URI(req.uri.to_s).query).key?('s') })
+      end
+    end
+
     context 'with missing credentials' do
       let(:user) { create(:user, settings: {}) }
 

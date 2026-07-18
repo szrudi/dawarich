@@ -7,14 +7,15 @@
 class Photoprism::RequestPhotos
   include SslConfigurable
 
-  attr_reader :user, :photoprism_api_base_url, :photoprism_api_key, :start_date, :end_date
+  attr_reader :user, :photoprism_api_base_url, :photoprism_api_key, :start_date, :end_date, :album_uid
 
-  def initialize(user, start_date: '1970-01-01', end_date: nil)
+  def initialize(user, start_date: '1970-01-01', end_date: nil, album_uid: nil)
     @user = user
     @photoprism_api_base_url = "#{user.safe_settings.photoprism_url}/api/v1/photos"
     @photoprism_api_key = user.safe_settings.photoprism_api_key
     @start_date = start_date.presence || '1970-01-01'
     @end_date = end_date
+    @album_uid = album_uid
   end
 
   def call
@@ -88,6 +89,7 @@ class Photoprism::RequestPhotos
   def request_params(offset = 0)
     params = offset.zero? ? default_params : default_params.merge(offset: offset)
     params[:before] = (end_date.to_date + 1.day).iso8601 if end_date.present?
+    params[:s] = album_uid if album_uid.present?
     params
   end
 

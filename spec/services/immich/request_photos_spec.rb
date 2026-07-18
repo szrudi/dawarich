@@ -140,6 +140,43 @@ RSpec.describe Immich::RequestPhotos do
       it 'returns images and videos' do
         expect(service.map { _1['type'] }.uniq).to eq(%w[IMAGE VIDEO])
       end
+
+      it 'does not send an album filter' do
+        service
+
+        expect(WebMock).not_to(
+          have_requested(:post, 'http://immich.app/api/search/metadata')
+            .with { |req| JSON.parse(req.body).key?('albumIds') }
+        )
+      end
+    end
+
+    context 'when an album id is given' do
+      subject(:service) do
+        described_class.new(user, album_id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c').call
+      end
+
+      let(:empty_immich_data) do
+        { assets: { total: 0, count: 0, items: [], facets: [] } }.to_json
+      end
+
+      before do
+        stub_request(:any, 'http://immich.app/api/search/metadata')
+          .to_return(
+            { status: 200, body: mock_immich_data, headers: { 'content-type' => 'application/json' } },
+            { status: 200, body: empty_immich_data, headers: { 'content-type' => 'application/json' } }
+          )
+      end
+
+      it 'requests only assets from that album' do
+        service
+
+        expect(WebMock).to(
+          have_requested(:post, 'http://immich.app/api/search/metadata')
+            .with { |req| JSON.parse(req.body)['albumIds'] == ['0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c'] }
+            .at_least_once
+        )
+      end
     end
 
     context 'when user has no immich_url' do
