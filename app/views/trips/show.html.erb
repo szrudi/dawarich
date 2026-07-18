@@ -202,7 +202,10 @@
       <% end %>
 
       <%# Photo sources %>
-      <% if @photo_sources.any? %>
+      <%# The album badge and link render even when the album yielded no
+          photos — that empty gallery is exactly when the user needs the cue
+          that an album filter is active. %>
+      <% if @photo_sources.any? || @trip.photo_album %>
         <div class="mb-6">
           <div class="flex flex-wrap gap-2 items-center">
             <% if @trip.photo_album %>
@@ -210,7 +213,8 @@
                 <%= icon 'camera', class: 'w-4 h-4' %> Album: <%= @trip.photo_album_name || @trip.photo_album_id %>
               </span>
             <% end %>
-            <% @photo_sources.each do |source| %>
+            <% link_sources = @photo_sources.presence || [@trip.photo_album[:source]] %>
+            <% link_sources.each do |source| %>
               <% link_url = if @trip.photo_album && @trip.photo_album[:source] == source
                               photo_album_url(source, current_user.settings, @trip.photo_album_id)
                             else

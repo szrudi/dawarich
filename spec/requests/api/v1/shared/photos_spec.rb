@@ -169,12 +169,26 @@ RSpec.describe 'Api::V1::Shared::Photos', type: :request do
     end
 
     it 'searches photos within the track start_at..end_at range' do
-      expect(Photos::Search).to receive(:new).with(
-        owner, start_date: track.start_at.iso8601, end_date: track.end_at.iso8601, album: nil
-      ).and_return(instance_double(Photos::Search, call: found_photos))
+      allow(Photos::Search).to receive(:new).and_call_original
+      immich_owner = create(:user, :with_immich_integration)
+      immich_track = create(:track, user: immich_owner,
+                                    start_at: Time.utc(2026, 4, 1), end_at: Time.utc(2026, 4, 14))
+      immich_link = create(:shared_link, user: immich_owner, resource_type: :track,
+                                         resource_id: immich_track.id, settings: { 'show_photos' => true })
+      stub_request(:post, 'https://immich.example.com/api/search/metadata')
+        .to_return(status: 200, body: { assets: { items: [] } }.to_json,
+                   headers: { 'content-type' => 'application/json' })
 
-      get "/api/v1/shared/#{link.id}/photos"
+      get "/api/v1/shared/#{immich_link.id}/photos"
+
       expect(response).to have_http_status(:ok)
+      expect(WebMock).to(
+        have_requested(:post, 'https://immich.example.com/api/search/metadata')
+          .with do |req|
+            body = JSON.parse(req.body)
+            body['takenAfter'] == '2026-04-01T00:00:00Z' && body['takenBefore'] == '2026-04-14T00:00:00Z'
+          end
+      )
     end
   end
 end

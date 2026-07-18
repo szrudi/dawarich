@@ -189,6 +189,25 @@ RSpec.describe '/trips', type: :request do
       end
     end
 
+    context 'with a photo album' do
+      it 'creates the trip with the album attached' do
+        post trips_url, params: {
+          trip: {
+            name: 'Album trip',
+            started_at: 1.week.ago,
+            ended_at: 6.days.ago,
+            photo_album_source: 'photoprism',
+            photo_album_id: 'aqnzih81icziiyae',
+            photo_album_name: 'Belgium 2026'
+          }
+        }
+
+        trip = Trip.order(:created_at).last
+        expect(trip.photo_album).to eq(source: 'photoprism', id: 'aqnzih81icziiyae')
+        expect(trip.photo_album_name).to eq('Belgium 2026')
+      end
+    end
+
     context 'with invalid parameters' do
       it 'does not create a new Trip' do
         expect do

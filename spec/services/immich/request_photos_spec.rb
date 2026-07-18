@@ -198,10 +198,10 @@ RSpec.describe Immich::RequestPhotos do
 
         expect(WebMock).to(
           have_requested(:post, 'http://immich.app/api/search/metadata')
-            .with { |req|
+            .with do |req|
               body = JSON.parse(req.body)
               body['takenAfter'] == '2023-06-06T00:00:00Z' && body['takenBefore'] == '2023-06-10T23:59:59Z'
-            }
+            end
             .at_least_once
         )
       end

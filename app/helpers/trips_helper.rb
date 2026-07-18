@@ -28,9 +28,9 @@ module TripsHelper
   def photo_album_url(source, settings, album_id)
     case source
     when 'immich'
-      "#{settings['immich_url']}/albums/#{album_id}"
+      "#{settings['immich_url'].to_s.chomp('/')}/albums/#{album_id}"
     when 'photoprism'
-      "#{settings['photoprism_url']}/library/albums/#{album_id}/view"
+      "#{settings['photoprism_url'].to_s.chomp('/')}/library/albums/#{album_id}/view"
     end
   end
 
