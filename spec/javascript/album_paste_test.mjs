@@ -1,9 +1,15 @@
 import assert from "node:assert/strict"
+import { readFile } from "node:fs/promises"
 import test from "node:test"
 
-const { albumFromUrl, matchAlbumInput } = await import(
-  new URL("../../app/javascript/services/album_paste.js", import.meta.url)
+// Loaded via a data: URL so node treats the extensionless-ESM .js source as a
+// module regardless of node version (same technique as the other JS tests).
+const source = await readFile(
+  new URL("../../app/javascript/services/album_paste.js", import.meta.url),
+  "utf8",
 )
+const moduleUrl = `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
+const { albumFromUrl, matchAlbumInput } = await import(moduleUrl)
 
 const config = {
   immichUrl: "https://immich.example.com",
