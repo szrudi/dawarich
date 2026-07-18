@@ -228,6 +228,31 @@ RSpec.describe '/trips', type: :request do
 
         expect(response).to redirect_to(trip_url(trip))
       end
+
+      it 'updates the photo album' do
+        patch trip_url(trip), params: {
+          trip: {
+            photo_album_source: 'immich',
+            photo_album_id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c',
+            photo_album_name: 'Belgium trip 2026'
+          }
+        }
+        trip.reload
+
+        expect(trip.photo_album).to eq(source: 'immich', id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c')
+        expect(trip.photo_album_name).to eq('Belgium trip 2026')
+      end
+
+      it 'clears the photo album when blank values are submitted' do
+        trip.update!(photo_album_source: :immich, photo_album_id: 'abc-123', photo_album_name: 'Old')
+
+        patch trip_url(trip), params: {
+          trip: { photo_album_source: '', photo_album_id: '', photo_album_name: '' }
+        }
+        trip.reload
+
+        expect(trip.photo_album).to be_nil
+      end
     end
 
     context 'with invalid parameters' do

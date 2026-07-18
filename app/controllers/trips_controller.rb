@@ -144,7 +144,8 @@ class TripsController < ApplicationController
   end
 
   def trip_params
-    params.require(:trip).permit(:name, :started_at, :ended_at, :description)
+    params.require(:trip).permit(:name, :started_at, :ended_at, :description,
+                                 :photo_album_source, :photo_album_id, :photo_album_name)
   end
 
   def compute_day_stats

@@ -204,9 +204,19 @@
       <%# Photo sources %>
       <% if @photo_sources.any? %>
         <div class="mb-6">
-          <div class="flex flex-wrap gap-2">
+          <div class="flex flex-wrap gap-2 items-center">
+            <% if @trip.photo_album %>
+              <span class="badge badge-ghost gap-1">
+                <%= icon 'camera', class: 'w-4 h-4' %> Album: <%= @trip.photo_album_name || @trip.photo_album_id %>
+              </span>
+            <% end %>
             <% @photo_sources.each do |source| %>
-              <%= link_to photo_search_url(source, current_user.settings, @trip.started_at, @trip.ended_at),
+              <% link_url = if @trip.photo_album && @trip.photo_album[:source] == source
+                              photo_album_url(source, current_user.settings, @trip.photo_album_id)
+                            else
+                              photo_search_url(source, current_user.settings, @trip.started_at, @trip.ended_at)
+                            end %>
+              <%= link_to link_url,
                   class: "btn btn-sm btn-outline gap-1",
                   target: "_blank",
                   rel: "noopener" do %>
