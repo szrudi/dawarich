@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
+- Trips can now be linked to a photo album from Immich or PhotoPrism: pick an album in a searchable dropdown on the trip form (or paste an album URL), and the trip page — including its shared/public version — shows only the photos from that album instead of every photo taken during the trip's date range. A new `GET /api/v1/photos/albums` endpoint lists albums from the connected photo services. (#890)
 - Dawarich can now be installed to the phone home screen as a web app (PWA): all pages link the web app manifest and Apple touch icon, and the installed app opens straight into Map v2.
 
 ### Changed
