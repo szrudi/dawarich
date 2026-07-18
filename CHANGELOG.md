@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ### Added
 
 - Trips can now be linked to a photo album from Immich or PhotoPrism: pick an album in a searchable dropdown on the trip form (or paste an album URL), and the trip page — including its shared/public version — shows only the photos from that album instead of every photo taken during the trip's date range. A new `GET /api/v1/photos/albums` endpoint lists albums from the connected photo services. (#890)
+
+  Album date semantics: with an album linked, photos are fetched for the trip's calendar days ± 1 day and album membership is the filter, instead of intersecting with the trip's exact timestamps. Photo services report a mix of absolute and local wall-clock timestamps, so an exact-timestamp intersection silently dropped photos taken in a timezone different from the trip's (e.g. a 2-hour trip photographed 4 timezones away lost its entire album). The trip page still only shows photos on the trip's own days. Immich results are additionally verified against the album's real asset list, because older Immich servers silently ignore the album search filter — without that check a shared trip page could expose every photo in the date range.
 - Dawarich can now be installed to the phone home screen as a web app (PWA): all pages link the web app manifest and Apple touch icon, and the installed app opens straight into Map v2.
 
 ### Changed
