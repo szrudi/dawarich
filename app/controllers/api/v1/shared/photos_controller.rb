@@ -18,7 +18,7 @@ module Api
           return head(:not_found) unless ctx.show_photos?
           return head(:not_found) unless allowed_photo?(params[:photo_id], params[:source])
 
-          upstream = Photos::Thumbnail.new(link.user, params[:source], params[:photo_id]).call
+          upstream = ::Photos::Thumbnail.new(link.user, params[:source], params[:photo_id]).call
           return head(:not_found) unless upstream.success?
 
           send_data upstream.body, type: 'image/jpeg', disposition: 'inline'
@@ -68,7 +68,7 @@ module Api
           range = photo_range
           return [] if range.nil?
 
-          Photos::Search.cached(link.user, start_date: range.first, end_date: range.last)
+          ::Photos::Search.cached(link.user, start_date: range.first, end_date: range.last)
         end
 
         def photo_range

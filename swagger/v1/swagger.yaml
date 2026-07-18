@@ -2686,6 +2686,52 @@ paths:
                   isorcv: '2024-02-03T13:00:03Z'
                   isotst: '2024-02-03T13:00:03Z'
                   disptst: '2024-02-03 13:00:03'
+  "/api/v1/photos/albums":
+    get:
+      summary: Lists photo albums
+      tags:
+      - Photos
+      description: Returns albums from connected photo services (Immich, PhotoPrism).
+        Albums can be attached to a trip to limit its photos to that album.
+      parameters:
+      - name: api_key
+        in: query
+        required: true
+        description: API Key
+        schema:
+          type: string
+      responses:
+        '200':
+          description: albums found
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    source:
+                      type: string
+                      enum:
+                      - immich
+                      - photoprism
+                      description: Photo source service
+                    id:
+                      type: string
+                      description: Album ID in the source service
+                    name:
+                      type: string
+                      description: Album title
+                    photo_count:
+                      type: integer
+                      nullable: true
+                      description: Number of photos in the album
+                  required:
+                  - source
+                  - id
+                  - name
+        '401':
+          description: no photo integration configured
   "/api/v1/photos":
     get:
       summary: Lists photos

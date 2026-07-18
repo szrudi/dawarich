@@ -373,6 +373,9 @@ Rails.application.routes.draw do
         member do
           get 'thumbnail', constraints: { id: %r{[^/]+} }
         end
+        collection do
+          get 'albums', to: 'photos/albums#index'
+        end
       end
 
       resources :tracks, only: %i[index show] do
