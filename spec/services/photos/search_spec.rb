@@ -111,6 +111,76 @@ RSpec.describe Photos::Search do
       end
     end
 
+    context 'when an album is given' do
+      let(:user) do
+        create(
+          :user,
+          settings: {
+            'immich_url' => 'http://immich.app',
+            'immich_api_key' => 'immich-key',
+            'photoprism_url' => 'http://photoprism.local',
+            'photoprism_api_key' => 'photoprism-key'
+          }
+        )
+      end
+      let(:immich_response) do
+        {
+          assets: {
+            items: [{ 'id' => '1', 'type' => 'IMAGE', 'fileCreatedAt' => '2024-02-01T10:00:00Z' }],
+            nextPage: nil
+          }
+        }
+      end
+      let(:empty_immich_response) { { assets: { items: [] } } }
+
+      before do
+        stub_request(:post, 'http://immich.app/api/search/metadata')
+          .to_return(
+            { status: 200, body: immich_response.to_json,
+              headers: { 'content-type' => 'application/json' } },
+            { status: 200, body: empty_immich_response.to_json,
+              headers: { 'content-type' => 'application/json' } }
+          )
+        stub_request(:get, /photoprism\.local/)
+          .to_return(status: 200, body: [].to_json,
+                     headers: { 'Content-Type' => 'application/json' })
+      end
+
+      it 'queries only the album source and forwards the album id' do
+        service = described_class.new(
+          user,
+          start_date: start_date,
+          end_date: end_date,
+          album: { source: 'immich', id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c' }
+        )
+
+        result = service.call
+
+        expect(result.map { _1[:source] }.uniq).to eq(['immich'])
+        expect(WebMock).not_to have_requested(:get, /photoprism\.local/)
+        expect(WebMock).to(
+          have_requested(:post, 'http://immich.app/api/search/metadata')
+            .with { |req| JSON.parse(req.body)['albumIds'] == ['0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c'] }
+            .at_least_once
+        )
+      end
+
+      it 'queries only Photoprism for a photoprism album' do
+        service = described_class.new(
+          user,
+          start_date: start_date,
+          end_date: end_date,
+          album: { source: 'photoprism', id: 'aqnzih81icziiyae' }
+        )
+
+        service.call
+
+        expect(WebMock).not_to have_requested(:post, 'http://immich.app/api/search/metadata')
+        expect(WebMock).to have_requested(:get, /photoprism\.local/)
+          .with(query: hash_including(s: 'aqnzih81icziiyae'))
+      end
+    end
+
     context 'when filtering out videos' do
       let(:immich_photo) { { 'type' => 'video', 'id' => '1' } }
 

@@ -84,6 +84,37 @@ RSpec.describe 'Api::V1::Shared::Photos', type: :request do
     end
   end
 
+  context 'when the trip has a photo album' do
+    let(:owner) { create(:user, :with_immich_integration) }
+    let(:trip) do
+      create(:trip, user: owner,
+                    photo_album_source: :immich,
+                    photo_album_id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c',
+                    photo_album_name: 'Belgium trip 2026')
+    end
+    let(:link) do
+      create(:shared_link, user: owner, resource_type: :trip, resource_id: trip.id,
+                           settings: { 'show_photos' => true })
+    end
+
+    before do
+      stub_request(:post, 'https://immich.example.com/api/search/metadata')
+        .to_return(status: 200, body: { assets: { items: [] } }.to_json,
+                   headers: { 'content-type' => 'application/json' })
+    end
+
+    it 'requests only photos from that album' do
+      get "/api/v1/shared/#{link.id}/photos"
+
+      expect(response).to have_http_status(:ok)
+      expect(WebMock).to(
+        have_requested(:post, 'https://immich.example.com/api/search/metadata')
+          .with { |req| JSON.parse(req.body)['albumIds'] == ['0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c'] }
+          .at_least_once
+      )
+    end
+  end
+
   context 'when a photo falls inside a privacy zone' do
     let(:link) do
       create(:shared_link, user: owner, resource_type: :trip, resource_id: trip.id,
@@ -136,7 +167,7 @@ RSpec.describe 'Api::V1::Shared::Photos', type: :request do
 
     it 'searches photos within the track start_at..end_at range' do
       expect(Photos::Search).to receive(:new).with(
-        owner, start_date: track.start_at.iso8601, end_date: track.end_at.iso8601
+        owner, start_date: track.start_at.iso8601, end_date: track.end_at.iso8601, album: nil
       ).and_return(instance_double(Photos::Search, call: found_photos))
 
       get "/api/v1/shared/#{link.id}/photos"

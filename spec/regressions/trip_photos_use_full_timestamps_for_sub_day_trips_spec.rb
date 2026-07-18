@@ -14,7 +14,7 @@ RSpec.describe 'Trip photos use full timestamps when searching for assets' do
   context 'when a trip spans hours within a single day' do
     let(:started_at) { Time.utc(2024, 3, 29, 8, 0, 0) }
     let(:ended_at)   { Time.utc(2024, 3, 29, 20, 0, 0) }
-    let(:trip)       { instance_double('Trip', started_at: started_at, ended_at: ended_at) }
+    let(:trip)       { instance_double('Trip', started_at: started_at, ended_at: ended_at, photo_album: nil) }
 
     it 'passes distinct ISO8601 datetime bounds to Photos::Search' do
       photo_search = instance_double('Photos::Search', call: [])
@@ -36,7 +36,7 @@ RSpec.describe 'Trip photos use full timestamps when searching for assets' do
   context 'when a trip spans multiple days' do
     let(:started_at) { Time.utc(2024, 3, 29, 8, 0, 0) }
     let(:ended_at)   { Time.utc(2024, 4, 2, 20, 0, 0) }
-    let(:trip)       { instance_double('Trip', started_at: started_at, ended_at: ended_at) }
+    let(:trip)       { instance_double('Trip', started_at: started_at, ended_at: ended_at, photo_album: nil) }
 
     it 'still passes ISO8601 datetime bounds (no date-only truncation)' do
       photo_search = instance_double('Photos::Search', call: [])
