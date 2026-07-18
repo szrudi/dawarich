@@ -55,7 +55,8 @@ module Api
         end
 
         def allowed_ids_cache_key
-          "shared_link/#{link.id}/photo_ids/#{privacy_zones_fingerprint}"
+          album = photo_album
+          "shared_link/#{link.id}/photo_ids/#{album&.dig(:source)}/#{album&.dig(:id)}/#{privacy_zones_fingerprint}"
         end
 
         def privacy_zones_fingerprint
@@ -68,7 +69,13 @@ module Api
           range = photo_range
           return [] if range.nil?
 
-          ::Photos::Search.cached(link.user, start_date: range.first, end_date: range.last)
+          ::Photos::Search.cached(link.user, start_date: range.first, end_date: range.last, album: photo_album)
+        end
+
+        def photo_album
+          return nil unless link.resource_type.to_sym == :trip
+
+          link.resource&.photo_album
         end
 
         def photo_range
