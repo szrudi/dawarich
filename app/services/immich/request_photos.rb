@@ -120,9 +120,12 @@ class Immich::RequestPhotos
   # older Immich strips unknown search params (albumIds) without an error,
   # which would silently expose every photo in the window on shared pages.
   # Fails closed (nil, treated as an error upstream) when the album's asset
-  # list can't be fetched.
+  # list can't be fetched. The id set is briefly cached because this runs on
+  # every uncached trip-page render; failures are never cached.
   def only_album_members(data)
-    asset_ids = Immich::RequestAlbumAssets.new(user, album_id).call
+    asset_ids = Rails.cache.fetch("immich_album_assets/#{user.id}/#{album_id}", expires_in: 5.minutes) do
+      Immich::RequestAlbumAssets.new(user, album_id).call
+    end
     return nil if asset_ids.nil?
 
     member_ids = asset_ids.to_set

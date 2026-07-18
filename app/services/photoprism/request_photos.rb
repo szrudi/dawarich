@@ -22,6 +22,12 @@ class Photoprism::RequestPhotos
     raise ArgumentError, 'Photoprism URL is missing' if user.safe_settings.photoprism_url.blank?
     raise ArgumentError, 'Photoprism API key is missing' if photoprism_api_key.blank?
 
+    # Fail closed when the album can't be confirmed to exist: a deleted or
+    # foreign album must yield no photos, not the unfiltered window. The `s`
+    # scope itself is trusted for membership — it predates the PhotoPrism
+    # release this integration targets by years.
+    return [] if album_uid.present? && !album_exists?
+
     data = retrieve_photoprism_data
 
     return [] if data.blank? || data[0]['error'].present?
@@ -139,5 +145,20 @@ class Photoprism::RequestPhotos
     preview_token = headers['X-Preview-Token']
 
     Photoprism::CachePreviewToken.new(user, preview_token).call
+  end
+
+  # Existence check for the album scope; positive results are briefly cached
+  # (this runs on every uncached photo search), failures never are.
+  def album_exists?
+    Rails.cache.fetch("photoprism_album_exists/#{user.id}/#{album_uid}", expires_in: 5.minutes) do
+      response = HTTParty.get(
+        "#{user.safe_settings.photoprism_url}/api/v1/albums/#{ERB::Util.url_encode(album_uid)}",
+        http_options_with_ssl(user, :photoprism, { headers: headers, timeout: 10 })
+      )
+      response.success? || nil
+    end
+  rescue HTTParty::Error, Net::OpenTimeout, Net::ReadTimeout, Errno::ECONNREFUSED, SocketError => e
+    Rails.logger.error("Photoprism album existence check failed: #{e.message}")
+    false
   end
 end

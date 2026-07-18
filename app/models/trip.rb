@@ -19,8 +19,6 @@ class Trip < ApplicationRecord
 
   normalizes :photo_album_id, :photo_album_name, with: ->(value) { value.to_s.strip.presence }
 
-  before_validation :clear_stale_photo_album_name
-
   validates :name, :started_at, :ended_at, presence: true
   validates :photo_album_id, presence: true, if: -> { photo_album_source.present? }
   validates :photo_album_source, presence: true, if: -> { photo_album_id.present? }
@@ -78,13 +76,6 @@ class Trip < ApplicationRecord
     return false if demo?
 
     saved_change_to_started_at? || saved_change_to_ended_at?
-  end
-
-  # The cached display name must not outlive the album it was cached for —
-  # a stale name would make the trip badge and the external album link
-  # disagree.
-  def clear_stale_photo_album_name
-    self.photo_album_name = nil if photo_album_id_changed? && !photo_album_name_changed?
   end
 
   def photos

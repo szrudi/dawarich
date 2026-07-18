@@ -29,13 +29,13 @@ class Immich::RequestAlbumAssets
 
     result = Immich::ResponseValidator.validate_and_parse(response)
 
-    unless result[:success]
-      Rails.logger.error("Immich album assets fetch failed: #{result[:error]}")
+    unless result[:success] && result[:data].is_a?(Hash)
+      Rails.logger.error("Immich album assets fetch failed: #{result[:error] || 'unexpected response shape'}")
       return nil
     end
 
     Array(result[:data]['assets']).map { |asset| asset['id'] }
-  rescue HTTParty::Error, Net::OpenTimeout, Net::ReadTimeout => e
+  rescue HTTParty::Error, Net::OpenTimeout, Net::ReadTimeout, Errno::ECONNREFUSED, SocketError => e
     Rails.logger.error("Immich album assets fetch failed: #{e.message}")
     nil
   end

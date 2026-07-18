@@ -262,6 +262,28 @@ RSpec.describe '/trips', type: :request do
         expect(trip.photo_album_name).to eq('Belgium trip 2026')
       end
 
+      it 'clears a stale cached name when a new album id is submitted without a name' do
+        trip.update!(photo_album_source: :immich, photo_album_id: 'abc-123', photo_album_name: 'Old')
+
+        patch trip_url(trip), params: { trip: { photo_album_id: 'def-456' } }
+        trip.reload
+
+        expect(trip.photo_album_id).to eq('def-456')
+        expect(trip.photo_album_name).to be_nil
+      end
+
+      it 'keeps a resubmitted identical name when the album id changes' do
+        trip.update!(photo_album_source: :immich, photo_album_id: 'abc-123', photo_album_name: 'Summer')
+
+        patch trip_url(trip), params: {
+          trip: { photo_album_source: 'immich', photo_album_id: 'def-456', photo_album_name: 'Summer' }
+        }
+        trip.reload
+
+        expect(trip.photo_album_id).to eq('def-456')
+        expect(trip.photo_album_name).to eq('Summer')
+      end
+
       it 'clears the photo album when blank values are submitted' do
         trip.update!(photo_album_source: :immich, photo_album_id: 'abc-123', photo_album_name: 'Old')
 

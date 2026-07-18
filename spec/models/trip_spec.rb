@@ -66,20 +66,12 @@ RSpec.describe Trip, type: :model do
         expect(trip.errors[:photo_album_name]).to be_present
       end
 
-      it 'clears a stale cached name when the album id changes without a new name' do
+      it 'keeps a resubmitted name that equals the previous one when the id changes' do
         trip = create(:trip, user: user, photo_album_source: :immich,
-                             photo_album_id: 'abc-123', photo_album_name: 'Old album')
-        trip.update!(photo_album_id: 'def-456')
+                             photo_album_id: 'abc-123', photo_album_name: 'Summer')
+        trip.update!(photo_album_id: 'def-456', photo_album_name: 'Summer')
 
-        expect(trip.reload.photo_album_name).to be_nil
-      end
-
-      it 'keeps the name when id and name change together' do
-        trip = create(:trip, user: user, photo_album_source: :immich,
-                             photo_album_id: 'abc-123', photo_album_name: 'Old album')
-        trip.update!(photo_album_id: 'def-456', photo_album_name: 'New album')
-
-        expect(trip.reload.photo_album_name).to eq('New album')
+        expect(trip.reload.photo_album_name).to eq('Summer')
       end
     end
 

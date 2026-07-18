@@ -207,7 +207,11 @@ RSpec.describe Photoprism::RequestPhotos do
       end
 
       before do
-        stub_request(:any, /photoprism\.local/).to_return(
+        stub_request(:get, %r{photoprism\.local/api/v1/albums/aqnzih81icziiyae}).to_return(
+          status: 200, body: { 'UID' => 'aqnzih81icziiyae' }.to_json,
+          headers: { 'Content-Type' => 'application/json' }
+        )
+        stub_request(:get, %r{photoprism\.local/api/v1/photos}).to_return(
           status: 200, body: [].to_json, headers: { 'Content-Type' => 'application/json' }
         )
       end
@@ -215,14 +219,14 @@ RSpec.describe Photoprism::RequestPhotos do
       it 'scopes the request to that album' do
         service.call
 
-        expect(WebMock).to have_requested(:get, /photoprism\.local/)
+        expect(WebMock).to have_requested(:get, %r{photoprism\.local/api/v1/photos})
           .with(query: hash_including(s: 'aqnzih81icziiyae'))
       end
 
       it 'widens the date window by one extra day on each side' do
         service.call
 
-        expect(WebMock).to have_requested(:get, /photoprism\.local/)
+        expect(WebMock).to have_requested(:get, %r{photoprism\.local/api/v1/photos})
           .with(query: hash_including(after: '2023-12-31', before: '2025-01-02'))
       end
 
@@ -230,7 +234,7 @@ RSpec.describe Photoprism::RequestPhotos do
         out_of_window_photo = mock_photo_response.first.merge(
           'TakenAt' => '2026-06-01T14:00:00Z', 'TakenAtLocal' => '2026-06-01T18:00:00Z'
         )
-        stub_request(:any, /photoprism\.local/).to_return(
+        stub_request(:get, %r{photoprism\.local/api/v1/photos}).to_return(
           { status: 200, body: [out_of_window_photo].to_json, headers: { 'Content-Type' => 'application/json' } },
           { status: 200, body: [].to_json, headers: { 'Content-Type' => 'application/json' } }
         )
@@ -238,6 +242,14 @@ RSpec.describe Photoprism::RequestPhotos do
         result = service.call
 
         expect(result.map { _1['UID'] }).to eq(['psnveqq089xhy1c3'])
+      end
+
+      it 'fails closed and skips the photo search when the album does not exist' do
+        stub_request(:get, %r{photoprism\.local/api/v1/albums/aqnzih81icziiyae})
+          .to_return(status: 404, body: '')
+
+        expect(service.call).to eq([])
+        expect(WebMock).not_to have_requested(:get, %r{photoprism\.local/api/v1/photos})
       end
     end
 

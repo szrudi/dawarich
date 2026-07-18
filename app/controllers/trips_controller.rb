@@ -144,8 +144,16 @@ class TripsController < ApplicationController
   end
 
   def trip_params
-    params.require(:trip).permit(:name, :started_at, :ended_at, :description,
-                                 :photo_album_source, :photo_album_id, :photo_album_name)
+    permitted = params.require(:trip).permit(:name, :started_at, :ended_at, :description,
+                                             :photo_album_source, :photo_album_id, :photo_album_name)
+
+    # A new album id without an accompanying name means the caller didn't
+    # refresh the cached display name — drop it rather than keep a stale one.
+    # (Decided here, not in the model: dirty tracking can't distinguish "same
+    # name resubmitted" from "name not supplied".)
+    permitted[:photo_album_name] = nil if permitted.key?(:photo_album_id) && !permitted.key?(:photo_album_name)
+
+    permitted
   end
 
   def compute_day_stats
