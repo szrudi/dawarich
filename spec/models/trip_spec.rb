@@ -8,6 +8,49 @@ RSpec.describe Trip, type: :model do
     it { is_expected.to validate_presence_of(:started_at) }
     it { is_expected.to validate_presence_of(:ended_at) }
 
+    context 'photo album validation' do
+      let(:user) { create(:user) }
+
+      it 'is valid without a photo album' do
+        trip = build(:trip, user: user)
+        expect(trip).to be_valid
+      end
+
+      it 'is valid with a source and an album id' do
+        trip = build(:trip, user: user, photo_album_source: :immich,
+                            photo_album_id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c')
+        expect(trip).to be_valid
+      end
+
+      it 'is invalid with a source but no album id' do
+        trip = build(:trip, user: user, photo_album_source: :photoprism, photo_album_id: '')
+        expect(trip).not_to be_valid
+        expect(trip.errors[:photo_album_id]).to be_present
+      end
+
+      it 'is invalid with an album id but no source' do
+        trip = build(:trip, user: user, photo_album_id: 'aqnzih81icziiyae')
+        expect(trip).not_to be_valid
+        expect(trip.errors[:photo_album_source]).to be_present
+      end
+
+      it 'is invalid with a malformed album id' do
+        trip = build(:trip, user: user, photo_album_source: :immich, photo_album_id: 'not valid!')
+        expect(trip).not_to be_valid
+        expect(trip.errors[:photo_album_id]).to be_present
+      end
+
+      it 'clears the album when blank values are assigned' do
+        trip = create(:trip, user: user, photo_album_source: :immich,
+                             photo_album_id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c',
+                             photo_album_name: 'Belgium 2026')
+        trip.update!(photo_album_source: '', photo_album_id: '', photo_album_name: '')
+
+        expect(trip.reload.photo_album).to be_nil
+        expect(trip.photo_album_name).to be_nil
+      end
+    end
+
     context 'date range validation' do
       let(:user) { create(:user) }
 
@@ -33,6 +76,20 @@ RSpec.describe Trip, type: :model do
         trip = Trip.new(user: user, name: 'Test Trip')
         expect(trip.errors[:ended_at]).to be_empty
       end
+    end
+  end
+
+  describe '#photo_album' do
+    let(:user) { create(:user) }
+
+    it 'returns nil when no album is set' do
+      expect(build(:trip, user: user).photo_album).to be_nil
+    end
+
+    it 'returns the source and id when an album is set' do
+      trip = build(:trip, user: user, photo_album_source: :immich, photo_album_id: 'abc-123')
+
+      expect(trip.photo_album).to eq(source: 'immich', id: 'abc-123')
     end
   end
 
