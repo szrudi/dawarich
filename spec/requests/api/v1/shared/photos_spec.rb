@@ -101,6 +101,9 @@ RSpec.describe 'Api::V1::Shared::Photos', type: :request do
       stub_request(:post, 'https://immich.example.com/api/search/metadata')
         .to_return(status: 200, body: { assets: { items: [] } }.to_json,
                    headers: { 'content-type' => 'application/json' })
+      stub_request(:get, %r{immich\.example\.com/api/albums/})
+        .to_return(status: 200, body: { assets: [] }.to_json,
+                   headers: { 'content-type' => 'application/json' })
     end
 
     it 'requests only photos from that album' do

@@ -144,6 +144,9 @@ RSpec.describe Photos::Search do
         stub_request(:get, /photoprism\.local/)
           .to_return(status: 200, body: [].to_json,
                      headers: { 'Content-Type' => 'application/json' })
+        stub_request(:get, %r{immich\.app/api/albums/})
+          .to_return(status: 200, body: { assets: [{ id: '1' }] }.to_json,
+                     headers: { 'content-type' => 'application/json' })
       end
 
       it 'queries only the album source and forwards the album id' do

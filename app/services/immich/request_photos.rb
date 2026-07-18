@@ -21,7 +21,9 @@ class Immich::RequestPhotos
     data = retrieve_immich_data
     return nil if data.nil?
 
-    time_framed_data(data)
+    return time_framed_data(data) if album_id.blank?
+
+    only_album_members(data)
   end
 
   private
@@ -78,7 +80,7 @@ class Immich::RequestPhotos
 
   def request_body(page)
     body = {
-      takenAfter: normalize_date(start_date),
+      takenAfter: taken_after,
       size: 1000,
       page: page,
       order: 'asc',
@@ -89,7 +91,42 @@ class Immich::RequestPhotos
 
     return body unless end_date
 
-    body.merge(takenBefore: normalize_date(end_date))
+    body.merge(takenBefore: taken_before)
+  end
+
+  # Album mode deliberately loosens the date handling (both bounds widened to
+  # whole UTC days ±1 day, and the client-side re-filter skipped in #call):
+  # photo timestamps mix absolute instants (fileCreatedAt) with wall-clock
+  # strings (localDateTime), so an exact trip window shifted by the photos'
+  # timezone can silently drop an entire album (e.g. a 2h trip photographed
+  # in a timezone 4h away). The album membership check is the real filter;
+  # the widened window only bounds the fetch, and the trip page still renders
+  # photos grouped onto the trip's own calendar days.
+  def taken_after
+    return normalize_date(start_date) if album_id.blank?
+
+    date = parse_time(start_date)&.to_date
+    date ? "#{date.prev_day.iso8601}T00:00:00Z" : normalize_date(start_date)
+  end
+
+  def taken_before
+    return normalize_date(end_date) if album_id.blank?
+
+    date = parse_time(end_date)&.to_date
+    date ? "#{date.next_day.iso8601}T23:59:59Z" : normalize_date(end_date)
+  end
+
+  # Guarantees "only photos from this album" regardless of server version:
+  # older Immich strips unknown search params (albumIds) without an error,
+  # which would silently expose every photo in the window on shared pages.
+  # Fails closed (nil, treated as an error upstream) when the album's asset
+  # list can't be fetched.
+  def only_album_members(data)
+    asset_ids = Immich::RequestAlbumAssets.new(user, album_id).call
+    return nil if asset_ids.nil?
+
+    member_ids = asset_ids.to_set
+    data.select { |photo| member_ids.include?(photo['id']) }
   end
 
   def time_framed_data(data)

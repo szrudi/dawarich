@@ -153,7 +153,12 @@ RSpec.describe Immich::RequestPhotos do
 
     context 'when an album id is given' do
       subject(:service) do
-        described_class.new(user, album_id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c').call
+        described_class.new(
+          user,
+          start_date: '2023-06-07T10:00:00Z',
+          end_date: '2023-06-09T12:00:00Z',
+          album_id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c'
+        ).call
       end
 
       let(:empty_immich_data) do
@@ -166,6 +171,12 @@ RSpec.describe Immich::RequestPhotos do
             { status: 200, body: mock_immich_data, headers: { 'content-type' => 'application/json' } },
             { status: 200, body: empty_immich_data, headers: { 'content-type' => 'application/json' } }
           )
+        stub_request(:get, 'http://immich.app/api/albums/0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c')
+          .to_return(
+            status: 200,
+            body: { assets: [{ id: '7fe486e3-c3ba-4b54-bbf9-1281b39ed15c' }] }.to_json,
+            headers: { 'content-type' => 'application/json' }
+          )
       end
 
       it 'requests only assets from that album' do
@@ -176,6 +187,30 @@ RSpec.describe Immich::RequestPhotos do
             .with { |req| JSON.parse(req.body)['albumIds'] == ['0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c'] }
             .at_least_once
         )
+      end
+
+      it 'keeps only photos that belong to the album, even if the server returned more' do
+        expect(service.map { _1['id'] }).to eq(['7fe486e3-c3ba-4b54-bbf9-1281b39ed15c'])
+      end
+
+      it 'widens the date window to whole days plus one day on each side' do
+        service
+
+        expect(WebMock).to(
+          have_requested(:post, 'http://immich.app/api/search/metadata')
+            .with { |req|
+              body = JSON.parse(req.body)
+              body['takenAfter'] == '2023-06-06T00:00:00Z' && body['takenBefore'] == '2023-06-10T23:59:59Z'
+            }
+            .at_least_once
+        )
+      end
+
+      it 'fails closed when the album cannot be fetched' do
+        stub_request(:get, 'http://immich.app/api/albums/0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c')
+          .to_return(status: 500, body: '')
+
+        expect(service).to be_nil
       end
     end
 

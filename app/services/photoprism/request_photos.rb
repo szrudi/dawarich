@@ -26,6 +26,14 @@ class Photoprism::RequestPhotos
 
     return [] if data.blank? || data[0]['error'].present?
 
+    # Album mode trusts the server-side album scope and the widened day
+    # bounds instead of the wall-clock re-filter below: TakenAtLocal is a
+    # local wall-clock string, so comparing it against the trip's UTC
+    # instants drops every photo whose timezone differs from the trip's by
+    # more than the window slack (a 2h trip photographed at UTC+4 loses all
+    # its photos). The trip page still only renders the trip's own days.
+    return data if album_uid.present?
+
     time_framed_data(data, start_date, end_date)
   end
 
@@ -88,7 +96,7 @@ class Photoprism::RequestPhotos
 
   def request_params(offset = 0)
     params = offset.zero? ? default_params : default_params.merge(offset: offset)
-    params[:before] = (end_date.to_date + 1.day).iso8601 if end_date.present?
+    params[:before] = before_param if end_date.present?
     params[:s] = album_uid if album_uid.present?
     params
   end
@@ -98,9 +106,25 @@ class Photoprism::RequestPhotos
       q: '',
       public: true,
       quality: 3,
-      after: start_date.to_date.iso8601,
+      after: after_param,
       count: 1000
     }
+  end
+
+  # Album mode widens both bounds by one extra day so that photos whose
+  # wall-clock capture time sits up to a full timezone offset outside the
+  # trip's exact window are still fetched — album membership (the `s` scope)
+  # is the real filter. See the matching comment in #call.
+  def after_param
+    date = start_date.to_date
+    date -= 1 if album_uid.present?
+    date.iso8601
+  end
+
+  def before_param
+    date = end_date.to_date + 1.day
+    date += 1 if album_uid.present?
+    date.iso8601
   end
 
   def time_framed_data(data, start_date, end_date)
