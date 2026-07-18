@@ -1,11 +1,14 @@
 // Searchable photo-album picker used on trips/new and trips/edit.
 // Fetches the user's albums from all configured photo integrations once,
-// filters them client-side, and also accepts a pasted album URL or raw id.
+// filters them client-side, and also accepts a pasted album URL or raw id
+// (parsing lives in services/album_paste for unit testing).
+//
+// The hidden fields are the source of truth: the selection only changes on
+// an explicit action (picking a suggestion, pasting an id/URL, or the clear
+// button) — typing in the search box never silently drops a saved album.
 
+import { matchAlbumInput } from "services/album_paste"
 import BaseController from "./base_controller"
-
-const UUID_PATTERN =
-  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
 
 export default class extends BaseController {
   static targets = ["input", "list", "source", "id", "name"]
@@ -18,12 +21,15 @@ export default class extends BaseController {
 
   connect() {
     this.albums = null
+    this.albumsPromise = null
+    this.loadFailed = false
     this.boundCloseOnOutsideClick = this.closeOnOutsideClick.bind(this)
     document.addEventListener("click", this.boundCloseOnOutsideClick)
   }
 
   disconnect() {
     document.removeEventListener("click", this.boundCloseOnOutsideClick)
+    this.closeList()
   }
 
   async open() {
@@ -32,16 +38,11 @@ export default class extends BaseController {
   }
 
   async filter() {
-    const query = this.inputTarget.value.trim()
+    await this.loadAlbums()
 
+    const query = this.inputTarget.value.trim()
     if (this.matchPastedAlbum(query)) return
 
-    // Typing invalidates a previous selection until a new one is made
-    if (this.nameTarget.value && query !== this.nameTarget.value) {
-      this.setAlbum(null)
-    }
-
-    await this.loadAlbums()
     this.renderList(query)
   }
 
@@ -64,9 +65,12 @@ export default class extends BaseController {
     this.nameTarget.value = album ? album.name : ""
   }
 
-  async loadAlbums() {
-    if (this.albums !== null) return
+  loadAlbums() {
+    this.albumsPromise ||= this.fetchAlbums()
+    return this.albumsPromise
+  }
 
+  async fetchAlbums() {
     try {
       const response = await fetch(this.urlValue, {
         headers: {
@@ -76,52 +80,27 @@ export default class extends BaseController {
       })
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
       this.albums = await response.json()
+      this.loadFailed = false
     } catch (error) {
       console.error("Failed to fetch photo albums:", error)
-      this.albums = []
+      // Leave albums unset and drop the memoized promise so the next
+      // interaction retries instead of showing "No albums found" forever.
+      this.albums = null
+      this.loadFailed = true
+      this.albumsPromise = null
     }
   }
 
-  // Recognizes a pasted album URL (matched against the configured integration
-  // base URLs) or a bare album id, and selects the album directly.
   matchPastedAlbum(text) {
-    if (!text || text.length < 8 || text.includes(" ")) return false
+    const match = matchAlbumInput(text, {
+      immichUrl: this.immichUrlValue,
+      photoprismUrl: this.photoprismUrlValue,
+      albums: this.albums,
+    })
+    if (!match) return false
 
-    const fromUrl = this.albumFromUrl(text)
-    if (fromUrl) {
-      this.applyPastedAlbum(fromUrl.source, fromUrl.id)
-      return true
-    }
-
-    const listed = (this.albums || []).find((album) => album.id === text)
-    if (listed) {
-      this.applyPastedAlbum(listed.source, listed.id)
-      return true
-    }
-
-    if (UUID_PATTERN.test(text) && text.match(UUID_PATTERN)[0] === text) {
-      // A bare UUID is an Immich album id
-      this.applyPastedAlbum("immich", text)
-      return true
-    }
-
-    return false
-  }
-
-  albumFromUrl(text) {
-    if (!text.startsWith("http")) return null
-
-    if (this.immichUrlValue && text.startsWith(this.immichUrlValue)) {
-      const match = text.match(/\/albums\/([0-9a-f-]{36})/i)
-      if (match) return { source: "immich", id: match[1] }
-    }
-
-    if (this.photoprismUrlValue && text.startsWith(this.photoprismUrlValue)) {
-      const match = text.match(/\/albums\/([0-9a-z]+)/i)
-      if (match) return { source: "photoprism", id: match[1] }
-    }
-
-    return null
+    this.applyPastedAlbum(match.source, match.id)
+    return true
   }
 
   applyPastedAlbum(source, id) {
@@ -140,15 +119,7 @@ export default class extends BaseController {
     this.listTarget.textContent = ""
 
     if (albums.length === 0) {
-      const empty = document.createElement("li")
-      const label = document.createElement("span")
-      label.className = "px-4 py-2 text-sm opacity-60"
-      label.textContent =
-        this.albums && this.albums.length === 0
-          ? "No albums found"
-          : "No albums match your search"
-      empty.appendChild(label)
-      this.listTarget.appendChild(empty)
+      this.appendEmptyState()
     } else {
       const sources = [...new Set(albums.map((album) => album.source))]
       for (const source of sources) {
@@ -160,6 +131,22 @@ export default class extends BaseController {
     }
 
     this.listTarget.classList.remove("hidden")
+  }
+
+  appendEmptyState() {
+    const empty = document.createElement("li")
+    const label = document.createElement("span")
+    label.className = "px-4 py-2 text-sm opacity-60"
+    if (this.loadFailed) {
+      label.textContent =
+        "Couldn't load albums — you can still paste an album URL"
+    } else if (this.albums && this.albums.length === 0) {
+      label.textContent = "No albums found"
+    } else {
+      label.textContent = "No albums match your search"
+    }
+    empty.appendChild(label)
+    this.listTarget.appendChild(empty)
   }
 
   filteredAlbums(query) {
@@ -211,6 +198,16 @@ export default class extends BaseController {
   }
 
   closeOnOutsideClick(event) {
-    if (!this.element.contains(event.target)) this.closeList()
+    if (this.element.contains(event.target)) return
+
+    this.closeList()
+    // Restore the canonical display: if an album is selected, the input
+    // shows its name again, discarding any dangling search text.
+    if (
+      this.nameTarget.value &&
+      this.inputTarget.value.trim() !== this.nameTarget.value
+    ) {
+      this.inputTarget.value = this.nameTarget.value
+    }
   }
 }
