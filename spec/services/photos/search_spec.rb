@@ -193,6 +193,57 @@ RSpec.describe Photos::Search do
         expect(result.map { _1[:id] }).to eq(['in-1'])
       end
 
+      it 'buckets the day clamp in the owner timezone, not UTC' do
+        # 23:30Z on the day before the window = 00:30 local (CET, UTC+1) on
+        # the window's first day: must be KEPT.
+        late_utc = { 'id' => 'late-utc', 'type' => 'IMAGE', 'fileCreatedAt' => '2023-12-31T23:30:00Z' }
+        stub_request(:post, 'http://immich.app/api/search/metadata')
+          .to_return(
+            { status: 200, body: { assets: { items: [late_utc] } }.to_json,
+              headers: { 'content-type' => 'application/json' } },
+            { status: 200, body: { assets: { items: [] } }.to_json,
+              headers: { 'content-type' => 'application/json' } }
+          )
+        stub_request(:get, %r{immich\.app/api/albums/})
+          .to_return(status: 200, body: { assets: [{ id: 'late-utc' }] }.to_json,
+                     headers: { 'content-type' => 'application/json' })
+
+        result = described_class.new(
+          user,
+          start_date: '2024-01-01T00:00:00+01:00',
+          end_date: '2024-03-01T00:00:00+01:00',
+          album: { source: 'immich', id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c' },
+          timezone: 'Europe/Amsterdam'
+        ).call
+
+        expect(result.map { _1[:id] }).to eq(['late-utc'])
+      end
+
+      it 'buckets wall-clock-only timestamps by their naive day' do
+        # No fileCreatedAt: localDateTime is a naive wall-clock string; its
+        # calendar day is what counts (the 2h-trip-in-a-far-timezone case).
+        wall_clock = { 'id' => 'wall-1', 'type' => 'IMAGE', 'localDateTime' => '2024-02-01T14:00:00' }
+        stub_request(:post, 'http://immich.app/api/search/metadata')
+          .to_return(
+            { status: 200, body: { assets: { items: [wall_clock] } }.to_json,
+              headers: { 'content-type' => 'application/json' } },
+            { status: 200, body: { assets: { items: [] } }.to_json,
+              headers: { 'content-type' => 'application/json' } }
+          )
+        stub_request(:get, %r{immich\.app/api/albums/})
+          .to_return(status: 200, body: { assets: [{ id: 'wall-1' }] }.to_json,
+                     headers: { 'content-type' => 'application/json' })
+
+        result = described_class.new(
+          user,
+          start_date: start_date,
+          end_date: end_date,
+          album: { source: 'immich', id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c' }
+        ).call
+
+        expect(result.map { _1[:id] }).to eq(['wall-1'])
+      end
+
       it 'queries only Photoprism for a photoprism album' do
         service = described_class.new(
           user,

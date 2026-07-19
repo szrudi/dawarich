@@ -222,6 +222,33 @@ RSpec.describe Immich::RequestPhotos do
           %w[7fe486e3-c3ba-4b54-bbf9-1281b39ed15c 7fe486e3-c3ba-4b54-bbf9-1281b39ed15c2]
         )
       end
+
+      it 'caches the :unavailable marker across calls, surviving the cache round-trip' do
+        album_stub = stub_request(:get, 'http://immich.app/api/albums/0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c')
+                     .to_return(status: 200, body: { id: 'x', assetCount: 194 }.to_json,
+                                headers: { 'content-type' => 'application/json' })
+        stub_request(:any, 'http://immich.app/api/search/metadata')
+          .to_return(
+            { status: 200, body: mock_immich_data, headers: { 'content-type' => 'application/json' } },
+            { status: 200, body: empty_immich_data, headers: { 'content-type' => 'application/json' } },
+            { status: 200, body: mock_immich_data, headers: { 'content-type' => 'application/json' } },
+            { status: 200, body: empty_immich_data, headers: { 'content-type' => 'application/json' } }
+          )
+
+        first = described_class.new(
+          user,
+          start_date: '2023-06-07T10:00:00Z', end_date: '2023-06-09T12:00:00Z',
+          album_id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c'
+        ).call
+        second = described_class.new(
+          user,
+          start_date: '2023-06-07T10:00:00Z', end_date: '2023-06-09T12:00:00Z',
+          album_id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c'
+        ).call
+
+        expect(second.map { _1['id'] }).to eq(first.map { _1['id'] })
+        expect(album_stub).to have_been_requested.once
+      end
     end
 
     context 'when user has no immich_url' do
