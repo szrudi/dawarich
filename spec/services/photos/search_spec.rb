@@ -168,9 +168,9 @@ RSpec.describe Photos::Search do
         )
       end
 
-      it 'clamps album photos to the calendar days of the requested window' do
+      it 'clamps album photos to the requested window' do
         in_window  = { 'id' => 'in-1', 'type' => 'IMAGE', 'fileCreatedAt' => '2024-02-01T10:00:00Z' }
-        # Fetched thanks to the widened album window, but outside the trip days:
+        # Fetched thanks to the widened album window, but outside the trip:
         adjacent   = { 'id' => 'out-1', 'type' => 'IMAGE', 'fileCreatedAt' => '2023-12-31T18:00:00Z' }
         stub_request(:post, 'http://immich.app/api/search/metadata')
           .to_return(
@@ -193,9 +193,9 @@ RSpec.describe Photos::Search do
         expect(result.map { _1[:id] }).to eq(['in-1'])
       end
 
-      it 'buckets the day clamp in the owner timezone, not UTC' do
-        # 23:30Z on the day before the window = 00:30 local (CET, UTC+1) on
-        # the window's first day: must be KEPT.
+      it 'keeps a photo taken after the trip start even when its UTC date is the day before' do
+        # 23:30Z on Dec 31 is after the trip's start instant (midnight CET =
+        # 23:00Z): must be KEPT, regardless of the UTC calendar date.
         late_utc = { 'id' => 'late-utc', 'type' => 'IMAGE', 'fileCreatedAt' => '2023-12-31T23:30:00Z' }
         stub_request(:post, 'http://immich.app/api/search/metadata')
           .to_return(
@@ -217,6 +217,32 @@ RSpec.describe Photos::Search do
         ).call
 
         expect(result.map { _1[:id] }).to eq(['late-utc'])
+      end
+
+      it 'excludes a same-day photo taken before the trip started' do
+        # Trip starts in the evening; an album photo from that morning is not
+        # part of the trip even though it shares the calendar day.
+        morning = { 'id' => 'morning-1', 'type' => 'IMAGE', 'fileCreatedAt' => '2024-02-01T07:13:00Z' }
+        during  = { 'id' => 'during-1', 'type' => 'IMAGE', 'fileCreatedAt' => '2024-02-01T19:45:00Z' }
+        stub_request(:post, 'http://immich.app/api/search/metadata')
+          .to_return(
+            { status: 200, body: { assets: { items: [morning, during] } }.to_json,
+              headers: { 'content-type' => 'application/json' } },
+            { status: 200, body: { assets: { items: [] } }.to_json,
+              headers: { 'content-type' => 'application/json' } }
+          )
+        stub_request(:get, %r{immich\.app/api/albums/})
+          .to_return(status: 200, body: { assets: [{ id: 'morning-1' }, { id: 'during-1' }] }.to_json,
+                     headers: { 'content-type' => 'application/json' })
+
+        result = described_class.new(
+          user,
+          start_date: '2024-02-01T17:00:00Z',
+          end_date: '2024-02-03T20:00:00Z',
+          album: { source: 'immich', id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c' }
+        ).call
+
+        expect(result.map { _1[:id] }).to eq(['during-1'])
       end
 
       it 'buckets wall-clock-only timestamps by their naive day' do

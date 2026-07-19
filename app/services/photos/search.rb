@@ -34,7 +34,7 @@ class Photos::Search
     photos << photoprism_photos if photoprism_photos.present?
 
     serialized = photos.flatten.map { |photo| Api::PhotoSerializer.new(photo, photo[:source]).call }
-    album_id.present? ? clamp_to_days(serialized) : serialized
+    album_id.present? ? clamp_to_window(serialized) : serialized
   end
 
   private
@@ -83,25 +83,44 @@ class Photos::Search
   end
 
   # Album mode fetches a window widened by ±1 day (timezone tolerance for the
-  # services' wall-clock timestamps), but only photos whose calendar day —
-  # bucketed exactly like the trip page's day galleries — falls within the
-  # requested days may surface. Without this clamp, adjacent-day album photos
-  # (a multi-day album shared as a one-day trip) leak into maps and previews,
-  # and can even evict same-day photos from capped views.
-  def clamp_to_days(photos)
-    zone = Time.find_zone(@timezone) || Time.find_zone('UTC')
-    from = parse_date(start_date, zone)
-    to   = parse_date(end_date, zone)
-    return photos if from.nil? || to.nil?
+  # services' wall-clock timestamps), so this clamp decides what actually
+  # surfaces. Photos with an absolute capture instant (capturedAt: Immich
+  # fileCreatedAt / PhotoPrism TakenAt) are compared against the exact
+  # requested window — a photo taken the morning before an evening departure
+  # is not part of the trip. Only wall-clock-only photos (localDateTime /
+  # TakenAtLocal, which caused the original silent drops when compared
+  # against UTC instants) fall back to a tolerant calendar-day match in the
+  # owner's timezone. Without this clamp, adjacent-day album photos (a
+  # multi-day album shared as a shorter trip) leak into maps and previews and
+  # can even evict in-window photos from capped views.
+  def clamp_to_window(photos)
+    window_start = parse_time(start_date)
+    window_end   = parse_time(end_date)
+    return photos if window_start.nil? || window_end.nil?
 
-    days = from..to
+    zone = Time.find_zone(@timezone) || Time.find_zone('UTC')
+    days = window_start.in_time_zone(zone).to_date..window_end.in_time_zone(zone).to_date
+
     photos.select do |photo|
-      date = parse_date(photo[:capturedAt] || photo[:localDateTime], zone)
-      date && days.cover?(date)
+      if photo[:capturedAt].present?
+        instant = parse_time(photo[:capturedAt])
+        instant&.between?(window_start, window_end)
+      else
+        date = parse_wall_clock_date(photo[:localDateTime], zone)
+        date && days.cover?(date)
+      end
     end
   end
 
-  def parse_date(raw, zone)
+  def parse_time(raw)
+    return nil if raw.blank?
+
+    Time.parse(raw.to_s).utc
+  rescue ArgumentError, TypeError
+    nil
+  end
+
+  def parse_wall_clock_date(raw, zone)
     return nil if raw.blank?
 
     zone.parse(raw.to_s)&.to_date
