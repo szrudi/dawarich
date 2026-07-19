@@ -69,7 +69,8 @@ module Api
           range = photo_range
           return [] if range.nil?
 
-          ::Photos::Search.cached(link.user, start_date: range.first, end_date: range.last, album: photo_album)
+          ::Photos::Search.cached(link.user, start_date: range.first, end_date: range.last,
+                                             album: photo_album, timezone: link.user.timezone_iana)
         end
 
         # Memoized: this runs on the thumbnail hot path (once per image), and

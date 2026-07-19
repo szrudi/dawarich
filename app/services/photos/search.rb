@@ -3,22 +3,24 @@
 class Photos::Search
   attr_reader :user, :start_date, :end_date, :errors
 
-  def self.cached(user, start_date: '1970-01-01', end_date: nil, album: nil, expires_in: 1.minute)
-    key = "photos_search/#{user.id}/#{start_date}/#{end_date}/#{album&.dig(:source)}/#{album&.dig(:id)}"
+  def self.cached(user, start_date: '1970-01-01', end_date: nil, album: nil, timezone: 'UTC', expires_in: 1.minute)
+    key = "photos_search/#{user.id}/#{start_date}/#{end_date}/" \
+          "#{album&.dig(:source)}/#{album&.dig(:id)}/#{album ? timezone : nil}"
     cached = Rails.cache.read(key)
     return cached if cached.present?
 
-    result = new(user, start_date: start_date, end_date: end_date, album: album).call
+    result = new(user, start_date: start_date, end_date: end_date, album: album, timezone: timezone).call
     Rails.cache.write(key, result, expires_in: expires_in) if result.present?
     result
   end
 
-  def initialize(user, start_date: '1970-01-01', end_date: nil, album: nil)
+  def initialize(user, start_date: '1970-01-01', end_date: nil, album: nil, timezone: 'UTC')
     @user = user
     @start_date = start_date
     @end_date = end_date
     @album_source = album&.dig(:source)&.to_s
     @album_id = album&.dig(:id)
+    @timezone = timezone
     @errors = []
   end
 
@@ -31,7 +33,8 @@ class Photos::Search
     photos << immich_photos if immich_photos.present?
     photos << photoprism_photos if photoprism_photos.present?
 
-    photos.flatten.map { |photo| Api::PhotoSerializer.new(photo, photo[:source]).call }
+    serialized = photos.flatten.map { |photo| Api::PhotoSerializer.new(photo, photo[:source]).call }
+    album_id.present? ? clamp_to_days(serialized) : serialized
   end
 
   private
@@ -77,5 +80,32 @@ class Photos::Search
     return if asset_type.downcase == 'video'
 
     asset.merge(source: source)
+  end
+
+  # Album mode fetches a window widened by ±1 day (timezone tolerance for the
+  # services' wall-clock timestamps), but only photos whose calendar day —
+  # bucketed exactly like the trip page's day galleries — falls within the
+  # requested days may surface. Without this clamp, adjacent-day album photos
+  # (a multi-day album shared as a one-day trip) leak into maps and previews,
+  # and can even evict same-day photos from capped views.
+  def clamp_to_days(photos)
+    zone = Time.find_zone(@timezone) || Time.find_zone('UTC')
+    from = parse_date(start_date, zone)
+    to   = parse_date(end_date, zone)
+    return photos if from.nil? || to.nil?
+
+    days = from..to
+    photos.select do |photo|
+      date = parse_date(photo[:capturedAt] || photo[:localDateTime], zone)
+      date && days.cover?(date)
+    end
+  end
+
+  def parse_date(raw, zone)
+    return nil if raw.blank?
+
+    zone.parse(raw.to_s)&.to_date
+  rescue ArgumentError, TypeError
+    nil
   end
 end

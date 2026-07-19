@@ -46,9 +46,11 @@ RSpec.describe Trips::Photos do
         allow(user).to receive(:immich_integration_configured?).and_return(true)
         allow(user).to receive(:photoprism_integration_configured?).and_return(false)
         allow(user).to receive(:api_key).and_return('test-api-key')
+        allow(user).to receive(:timezone_iana).and_return('Etc/UTC')
 
         allow(Photos::Search).to receive(:new)
-          .with(user, start_date: '2024-01-01T10:00:00Z', end_date: '2024-01-07T18:30:00Z', album: nil)
+          .with(user, start_date: '2024-01-01T10:00:00Z', end_date: '2024-01-07T18:30:00Z',
+                      album: nil, timezone: 'Etc/UTC')
           .and_return(photo_search)
         allow(photo_search).to receive(:call).and_return(raw_photos)
       end

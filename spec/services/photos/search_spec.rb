@@ -168,6 +168,31 @@ RSpec.describe Photos::Search do
         )
       end
 
+      it 'clamps album photos to the calendar days of the requested window' do
+        in_window  = { 'id' => 'in-1', 'type' => 'IMAGE', 'fileCreatedAt' => '2024-02-01T10:00:00Z' }
+        # Fetched thanks to the widened album window, but outside the trip days:
+        adjacent   = { 'id' => 'out-1', 'type' => 'IMAGE', 'fileCreatedAt' => '2023-12-31T18:00:00Z' }
+        stub_request(:post, 'http://immich.app/api/search/metadata')
+          .to_return(
+            { status: 200, body: { assets: { items: [in_window, adjacent] } }.to_json,
+              headers: { 'content-type' => 'application/json' } },
+            { status: 200, body: { assets: { items: [] } }.to_json,
+              headers: { 'content-type' => 'application/json' } }
+          )
+        stub_request(:get, %r{immich\.app/api/albums/})
+          .to_return(status: 200, body: { assets: [{ id: 'in-1' }, { id: 'out-1' }] }.to_json,
+                     headers: { 'content-type' => 'application/json' })
+
+        result = described_class.new(
+          user,
+          start_date: start_date,
+          end_date: end_date,
+          album: { source: 'immich', id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c' }
+        ).call
+
+        expect(result.map { _1[:id] }).to eq(['in-1'])
+      end
+
       it 'queries only Photoprism for a photoprism album' do
         service = described_class.new(
           user,

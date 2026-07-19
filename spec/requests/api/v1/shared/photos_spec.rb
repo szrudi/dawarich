@@ -118,9 +118,10 @@ RSpec.describe 'Api::V1::Shared::Photos', type: :request do
     end
 
     it 'excludes photos the server returned that are not album members' do
-      member = { 'id' => 'member-1', 'type' => 'IMAGE', 'fileCreatedAt' => 1.day.ago.utc.iso8601,
+      taken_at = (trip.started_at + 2.hours).utc.iso8601
+      member = { 'id' => 'member-1', 'type' => 'IMAGE', 'fileCreatedAt' => taken_at,
                  'exifInfo' => { 'latitude' => 52.0, 'longitude' => 13.0 } }
-      outsider = { 'id' => 'outsider-1', 'type' => 'IMAGE', 'fileCreatedAt' => 1.day.ago.utc.iso8601,
+      outsider = { 'id' => 'outsider-1', 'type' => 'IMAGE', 'fileCreatedAt' => taken_at,
                    'exifInfo' => { 'latitude' => 52.5, 'longitude' => 13.5 } }
       stub_request(:post, 'https://immich.example.com/api/search/metadata')
         .to_return(

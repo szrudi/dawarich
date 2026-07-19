@@ -9,6 +9,7 @@ RSpec.describe 'Trip photos use full timestamps when searching for assets' do
     allow(user).to receive(:immich_integration_configured?).and_return(true)
     allow(user).to receive(:photoprism_integration_configured?).and_return(false)
     allow(user).to receive(:api_key).and_return('test-api-key')
+    allow(user).to receive(:timezone_iana).and_return('Etc/UTC')
   end
 
   context 'when a trip spans hours within a single day' do

@@ -14,7 +14,7 @@ class Api::V1::PhotosController < ApiController
     return render json: cached_photos, status: :ok if cached_photos.present?
 
     search = Photos::Search.new(current_api_user, start_date: params[:start_date], end_date: params[:end_date],
-                                                  album: album)
+                                                  album: album, timezone: current_api_user.timezone_iana)
     @photos = search.call
     Rails.cache.write(cache_key, @photos, expires_in: 30.minutes) if search.errors.blank? && @photos.present?
 
