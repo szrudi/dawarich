@@ -81,6 +81,16 @@ module Api
           @photo_album = link.resource_type.to_sym == :trip ? link.resource&.photo_album : nil
         end
 
+        def photo_day(photo)
+          raw = photo[:capturedAt] || photo[:localDateTime]
+          return nil if raw.blank?
+
+          zone = Time.find_zone(link.user.timezone_iana) || Time.find_zone('UTC')
+          zone.parse(raw.to_s)&.to_date&.strftime('%Y-%m-%d')
+        rescue ArgumentError, TypeError
+          nil
+        end
+
         def photo_range
           case link.resource_type.to_sym
           when :trip
@@ -112,6 +122,10 @@ module Api
             longitude: photo[:longitude],
             source: photo[:source],
             taken_at: photo[:capturedAt] || photo[:localDateTime],
+            # The photo's calendar day in the owner's timezone, matching the
+            # day keys of the page's day rows — lets the map include a day's
+            # photo markers when zooming to that day.
+            day: photo_day(photo),
             thumbnail_url: url_for(
               controller: 'api/v1/shared/photos',
               action: 'thumbnail',

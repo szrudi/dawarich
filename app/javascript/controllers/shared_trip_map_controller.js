@@ -209,7 +209,13 @@ export default class extends Controller {
       this.selectedDay = dayKey
       this.dayRoutesLayer.selectDay(dayKey)
       const dayBounds = this.dayRoutesLayer.getDayBounds(dayKey)
-      if (dayBounds) this.map.fitBounds(dayBounds, { padding: 60, maxZoom: 15 })
+      if (dayBounds) {
+        // Photos taken on this day can sit away from the tracked route
+        // (e.g. a morning photo before an evening drive) — include their
+        // markers so zooming to a day never hides its own photos.
+        const bounds = this.extendWithDayPhotos(dayBounds, dayKey)
+        this.map.fitBounds(bounds, { padding: 60, maxZoom: 15 })
+      }
     }
     this.markActiveRow()
     this.replayPanel?.syncToDay(dayKey)
@@ -275,6 +281,16 @@ export default class extends Controller {
 
   replaySpeedChange(event) {
     this.replayPanel?.speedChange(event)
+  }
+
+  extendWithDayPhotos(dayBounds, dayKey) {
+    const bounds = new maplibregl.LngLatBounds(dayBounds)
+    for (const { photo } of this.photoMarkers || []) {
+      if (photo.day !== dayKey) continue
+      if (photo.longitude == null || photo.latitude == null) continue
+      bounds.extend([photo.longitude, photo.latitude])
+    }
+    return bounds
   }
 
   markActiveRow() {
