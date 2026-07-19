@@ -212,6 +212,16 @@ RSpec.describe Immich::RequestPhotos do
 
         expect(service).to be_nil
       end
+
+      it 'trusts the server-side filter when the album detail has no asset list' do
+        stub_request(:get, 'http://immich.app/api/albums/0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c')
+          .to_return(status: 200, body: { id: 'x', assetCount: 194 }.to_json,
+                     headers: { 'content-type' => 'application/json' })
+
+        expect(service.map { _1['id'] }).to eq(
+          %w[7fe486e3-c3ba-4b54-bbf9-1281b39ed15c 7fe486e3-c3ba-4b54-bbf9-1281b39ed15c2]
+        )
+      end
     end
 
     context 'when user has no immich_url' do

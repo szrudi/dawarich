@@ -127,6 +127,10 @@ class Immich::RequestPhotos
       Immich::RequestAlbumAssets.new(user, album_id).call
     end
     return nil if asset_ids.nil?
+    # Album confirmed to exist, but this server doesn't inline the asset list
+    # — only 2026-era Immich versions do that, and they all support albumIds
+    # search filtering natively, so the server-side filter can be trusted.
+    return data if asset_ids == :unavailable
 
     member_ids = asset_ids.to_set
     data.select { |photo| member_ids.include?(photo['id']) }

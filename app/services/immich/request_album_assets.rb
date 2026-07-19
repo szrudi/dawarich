@@ -6,8 +6,14 @@
 # filtered by albumIds can quietly return every photo in the date range.
 # Cross-checking against the album's own asset list guarantees the filter.
 #
-# Returns an Array of asset id strings, or nil when the album can't be
-# fetched — callers must treat nil as "fail closed", not as an empty album.
+# Returns:
+# - an Array of asset id strings when the album detail includes them,
+# - :unavailable when the album exists but the server no longer inlines the
+#   asset list (2026-era Immich dropped it from GET /api/albums/:id) — those
+#   versions support albumIds search filtering natively, so callers can trust
+#   the server-side filter,
+# - nil when the album can't be fetched at all — callers must treat nil as
+#   "fail closed", not as an empty album.
 class Immich::RequestAlbumAssets
   include SslConfigurable
 
@@ -33,6 +39,8 @@ class Immich::RequestAlbumAssets
       Rails.logger.error("Immich album assets fetch failed: #{result[:error] || 'unexpected response shape'}")
       return nil
     end
+
+    return :unavailable unless result[:data].key?('assets')
 
     Array(result[:data]['assets']).map { |asset| asset['id'] }
   rescue HTTParty::Error, Net::OpenTimeout, Net::ReadTimeout, Errno::ECONNREFUSED, SocketError => e

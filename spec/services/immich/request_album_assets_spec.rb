@@ -30,6 +30,21 @@ RSpec.describe Immich::RequestAlbumAssets do
       end
     end
 
+    context 'when the server does not inline the asset list (2026-era Immich)' do
+      before do
+        stub_request(:get, "http://immich.app/api/albums/#{album_id}")
+          .to_return(
+            status: 200,
+            body: { id: album_id, albumName: 'Belgium trip 2026', assetCount: 194 }.to_json,
+            headers: { 'content-type' => 'application/json' }
+          )
+      end
+
+      it 'returns :unavailable so callers can trust the native albumIds filter' do
+        expect(service).to eq(:unavailable)
+      end
+    end
+
     context 'when the album request fails' do
       before do
         stub_request(:get, "http://immich.app/api/albums/#{album_id}").to_return(status: 404, body: '')
