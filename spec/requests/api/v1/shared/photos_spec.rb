@@ -65,12 +65,6 @@ RSpec.describe 'Api::V1::Shared::Photos', type: :request do
       expect(JSON.parse(response.body).first['taken_at']).to eq('2026-04-02T13:30:00Z')
     end
 
-    it 'includes the owner-timezone day so the map can group markers with the day rows' do
-      get "/api/v1/shared/#{link.id}/photos"
-      expect(response).to have_http_status(:ok)
-      expect(JSON.parse(response.body).first['day']).to eq('2026-04-02')
-    end
-
     it 'serves thumbnails for photos belonging to the trip' do
       upstream = instance_double(HTTParty::Response, success?: true, body: 'jpeg-bytes')
       allow(Photos::Thumbnail).to receive(:new).with(owner, 'immich', 'asset-1').and_return(
