@@ -44,12 +44,48 @@ test("albumFromUrl recognizes a PhotoPrism library URL despite a trailing slash 
   )
 })
 
-test("albumFromUrl rejects URLs on unconfigured hosts", () => {
-  assert.equal(
+test("albumFromUrl recognizes an Immich album URL on a different host by path shape", () => {
+  // Dawarich configured with the internal Docker URL, user pastes the
+  // external URL they actually browse (upstream discussion #1782).
+  assert.deepEqual(
     albumFromUrl(
-      "https://evil.example.org/albums/0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c",
+      "https://photos-public.example.org/albums/0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c",
       config,
     ),
+    { source: "immich", id: "0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c" },
+  )
+})
+
+test("albumFromUrl recognizes a PhotoPrism library URL on a different host by path shape", () => {
+  assert.deepEqual(
+    albumFromUrl(
+      "https://pp-public.example.org/library/albums/aqnzih81icziiyae/view",
+      config,
+    ),
+    { source: "photoprism", id: "aqnzih81icziiyae" },
+  )
+})
+
+test("albumFromUrl refuses shape-matched URLs when that source is not configured", () => {
+  assert.equal(
+    albumFromUrl(
+      "https://photos-public.example.org/albums/0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c",
+      { photoprismUrl: "https://photos.example.com" },
+    ),
+    null,
+  )
+  assert.equal(
+    albumFromUrl(
+      "https://pp-public.example.org/library/albums/aqnzih81icziiyae/view",
+      { immichUrl: "https://immich.example.com" },
+    ),
+    null,
+  )
+})
+
+test("albumFromUrl rejects URLs without an album path", () => {
+  assert.equal(
+    albumFromUrl("https://evil.example.org/photos/12345", config),
     null,
   )
 })

@@ -10,8 +10,14 @@ function stripTrailingSlash(url) {
   return url ? url.replace(/\/+$/, "") : url
 }
 
-// Returns { source, id } when the text is an album URL under one of the
-// configured base URLs, null otherwise.
+// Returns { source, id } when the text is an album URL, null otherwise.
+// A URL under a configured base is attributed to that source directly.
+// Other hosts are still recognized by path shape: Dawarich is often
+// configured with an integration's internal Docker URL while the user
+// browses (and copies album links from) an external URL, so the host
+// can't be required to match (see upstream discussion #1782). The shape
+// fallback is gated on the source being configured at all, so a paste
+// can't select an album no integration can serve.
 export function albumFromUrl(text, { immichUrl, photoprismUrl } = {}) {
   if (!text?.startsWith("http")) return null
 
@@ -24,6 +30,21 @@ export function albumFromUrl(text, { immichUrl, photoprismUrl } = {}) {
   const photoprismBase = stripTrailingSlash(photoprismUrl)
   if (photoprismBase && text.startsWith(`${photoprismBase}/`)) {
     const match = text.match(/\/albums\/([0-9a-z]+)/i)
+    if (match) return { source: "photoprism", id: match[1] }
+  }
+
+  // Unknown host: infer the source from the path shape. Immich album ids
+  // are UUIDs; PhotoPrism album uids are non-UUID alphanumerics under
+  // /library/albums/.
+  if (immichUrl) {
+    const match = text.match(
+      /\/albums\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
+    )
+    if (match) return { source: "immich", id: match[1] }
+  }
+
+  if (photoprismUrl) {
+    const match = text.match(/\/library\/albums\/([0-9a-z]+)/i)
     if (match) return { source: "photoprism", id: match[1] }
   }
 
