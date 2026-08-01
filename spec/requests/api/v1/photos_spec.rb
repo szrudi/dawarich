@@ -65,10 +65,51 @@ RSpec.describe 'Api::V1::Photos', type: :request do
         end
 
         it 'writes cached photos with 30 minute ttl' do
-          cache_key = "photos_#{user.id}_#{start_date}_#{end_date}"
+          cache_key = "photos_#{user.id}_#{start_date}_#{end_date}__"
           expect(Rails.cache).to receive(:write).with(cache_key, photo_data, expires_in: 30.minutes)
 
           get '/api/v1/photos', params: { api_key: user.api_key, start_date: start_date, end_date: end_date }
+        end
+      end
+
+      context 'with an album filter' do
+        let(:user) { create(:user, :with_immich_integration) }
+        let(:album_id) { '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c' }
+
+        before do
+          stub_request(:post, 'https://immich.example.com/api/search/metadata')
+            .to_return(status: 200, body: { assets: { items: [] } }.to_json,
+                       headers: { 'content-type' => 'application/json' })
+          stub_request(:get, "https://immich.example.com/api/albums/#{album_id}")
+            .to_return(status: 200, body: { assets: [] }.to_json,
+                       headers: { 'content-type' => 'application/json' })
+        end
+
+        it 'passes the album through to the photo search' do
+          get '/api/v1/photos', params: {
+            api_key: user.api_key, start_date: '2024-01-01', end_date: '2024-01-02',
+            album_source: 'immich', album_id: album_id
+          }
+
+          expect(response).to have_http_status(:success)
+          expect(WebMock).to(
+            have_requested(:post, 'https://immich.example.com/api/search/metadata')
+              .with { |req| JSON.parse(req.body)['albumIds'] == [album_id] }
+              .at_least_once
+          )
+        end
+
+        it 'ignores an invalid album source' do
+          get '/api/v1/photos', params: {
+            api_key: user.api_key, start_date: '2024-01-01', end_date: '2024-01-02',
+            album_source: 'dropbox', album_id: album_id
+          }
+
+          expect(response).to have_http_status(:success)
+          expect(WebMock).not_to(
+            have_requested(:post, 'https://immich.example.com/api/search/metadata')
+              .with { |req| JSON.parse(req.body).key?('albumIds') }
+          )
         end
       end
 

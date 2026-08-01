@@ -111,6 +111,181 @@ RSpec.describe Photos::Search do
       end
     end
 
+    context 'when an album is given' do
+      let(:user) do
+        create(
+          :user,
+          settings: {
+            'immich_url' => 'http://immich.app',
+            'immich_api_key' => 'immich-key',
+            'photoprism_url' => 'http://photoprism.local',
+            'photoprism_api_key' => 'photoprism-key'
+          }
+        )
+      end
+      let(:immich_response) do
+        {
+          assets: {
+            items: [{ 'id' => '1', 'type' => 'IMAGE', 'fileCreatedAt' => '2024-02-01T10:00:00Z' }],
+            nextPage: nil
+          }
+        }
+      end
+      let(:empty_immich_response) { { assets: { items: [] } } }
+
+      before do
+        stub_request(:post, 'http://immich.app/api/search/metadata')
+          .to_return(
+            { status: 200, body: immich_response.to_json,
+              headers: { 'content-type' => 'application/json' } },
+            { status: 200, body: empty_immich_response.to_json,
+              headers: { 'content-type' => 'application/json' } }
+          )
+        stub_request(:get, /photoprism\.local/)
+          .to_return(status: 200, body: [].to_json,
+                     headers: { 'Content-Type' => 'application/json' })
+        stub_request(:get, %r{immich\.app/api/albums/})
+          .to_return(status: 200, body: { assets: [{ id: '1' }] }.to_json,
+                     headers: { 'content-type' => 'application/json' })
+      end
+
+      it 'queries only the album source and forwards the album id' do
+        service = described_class.new(
+          user,
+          start_date: start_date,
+          end_date: end_date,
+          album: { source: 'immich', id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c' }
+        )
+
+        result = service.call
+
+        expect(result.map { _1[:source] }.uniq).to eq(['immich'])
+        expect(WebMock).not_to have_requested(:get, /photoprism\.local/)
+        expect(WebMock).to(
+          have_requested(:post, 'http://immich.app/api/search/metadata')
+            .with { |req| JSON.parse(req.body)['albumIds'] == ['0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c'] }
+            .at_least_once
+        )
+      end
+
+      it 'clamps album photos to the requested window' do
+        in_window  = { 'id' => 'in-1', 'type' => 'IMAGE', 'fileCreatedAt' => '2024-02-01T10:00:00Z' }
+        # Fetched thanks to the widened album window, but outside the trip:
+        adjacent   = { 'id' => 'out-1', 'type' => 'IMAGE', 'fileCreatedAt' => '2023-12-31T18:00:00Z' }
+        stub_request(:post, 'http://immich.app/api/search/metadata')
+          .to_return(
+            { status: 200, body: { assets: { items: [in_window, adjacent] } }.to_json,
+              headers: { 'content-type' => 'application/json' } },
+            { status: 200, body: { assets: { items: [] } }.to_json,
+              headers: { 'content-type' => 'application/json' } }
+          )
+        stub_request(:get, %r{immich\.app/api/albums/})
+          .to_return(status: 200, body: { assets: [{ id: 'in-1' }, { id: 'out-1' }] }.to_json,
+                     headers: { 'content-type' => 'application/json' })
+
+        result = described_class.new(
+          user,
+          start_date: start_date,
+          end_date: end_date,
+          album: { source: 'immich', id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c' }
+        ).call
+
+        expect(result.map { _1[:id] }).to eq(['in-1'])
+      end
+
+      it 'keeps a photo taken after the trip start even when its UTC date is the day before' do
+        # 23:30Z on Dec 31 is after the trip's start instant (midnight CET =
+        # 23:00Z): must be KEPT, regardless of the UTC calendar date.
+        late_utc = { 'id' => 'late-utc', 'type' => 'IMAGE', 'fileCreatedAt' => '2023-12-31T23:30:00Z' }
+        stub_request(:post, 'http://immich.app/api/search/metadata')
+          .to_return(
+            { status: 200, body: { assets: { items: [late_utc] } }.to_json,
+              headers: { 'content-type' => 'application/json' } },
+            { status: 200, body: { assets: { items: [] } }.to_json,
+              headers: { 'content-type' => 'application/json' } }
+          )
+        stub_request(:get, %r{immich\.app/api/albums/})
+          .to_return(status: 200, body: { assets: [{ id: 'late-utc' }] }.to_json,
+                     headers: { 'content-type' => 'application/json' })
+
+        result = described_class.new(
+          user,
+          start_date: '2024-01-01T00:00:00+01:00',
+          end_date: '2024-03-01T00:00:00+01:00',
+          album: { source: 'immich', id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c' },
+          timezone: 'Europe/Amsterdam'
+        ).call
+
+        expect(result.map { _1[:id] }).to eq(['late-utc'])
+      end
+
+      it 'excludes a same-day photo taken before the trip started' do
+        # Trip starts in the evening; an album photo from that morning is not
+        # part of the trip even though it shares the calendar day.
+        morning = { 'id' => 'morning-1', 'type' => 'IMAGE', 'fileCreatedAt' => '2024-02-01T07:13:00Z' }
+        during  = { 'id' => 'during-1', 'type' => 'IMAGE', 'fileCreatedAt' => '2024-02-01T19:45:00Z' }
+        stub_request(:post, 'http://immich.app/api/search/metadata')
+          .to_return(
+            { status: 200, body: { assets: { items: [morning, during] } }.to_json,
+              headers: { 'content-type' => 'application/json' } },
+            { status: 200, body: { assets: { items: [] } }.to_json,
+              headers: { 'content-type' => 'application/json' } }
+          )
+        stub_request(:get, %r{immich\.app/api/albums/})
+          .to_return(status: 200, body: { assets: [{ id: 'morning-1' }, { id: 'during-1' }] }.to_json,
+                     headers: { 'content-type' => 'application/json' })
+
+        result = described_class.new(
+          user,
+          start_date: '2024-02-01T17:00:00Z',
+          end_date: '2024-02-03T20:00:00Z',
+          album: { source: 'immich', id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c' }
+        ).call
+
+        expect(result.map { _1[:id] }).to eq(['during-1'])
+      end
+
+      it 'buckets wall-clock-only timestamps by their naive day' do
+        # No fileCreatedAt: localDateTime is a naive wall-clock string; its
+        # calendar day is what counts (the 2h-trip-in-a-far-timezone case).
+        wall_clock = { 'id' => 'wall-1', 'type' => 'IMAGE', 'localDateTime' => '2024-02-01T14:00:00' }
+        stub_request(:post, 'http://immich.app/api/search/metadata')
+          .to_return(
+            { status: 200, body: { assets: { items: [wall_clock] } }.to_json,
+              headers: { 'content-type' => 'application/json' } },
+            { status: 200, body: { assets: { items: [] } }.to_json,
+              headers: { 'content-type' => 'application/json' } }
+          )
+        stub_request(:get, %r{immich\.app/api/albums/})
+          .to_return(status: 200, body: { assets: [{ id: 'wall-1' }] }.to_json,
+                     headers: { 'content-type' => 'application/json' })
+
+        result = described_class.new(
+          user,
+          start_date: start_date,
+          end_date: end_date,
+          album: { source: 'immich', id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c' }
+        ).call
+
+        expect(result.map { _1[:id] }).to eq(['wall-1'])
+      end
+
+      it 'queries only Photoprism for a photoprism album' do
+        service = described_class.new(
+          user,
+          start_date: start_date,
+          end_date: end_date,
+          album: { source: 'photoprism', id: 'aqnzih81icziiyae' }
+        )
+
+        service.call
+
+        expect(WebMock).not_to have_requested(:post, 'http://immich.app/api/search/metadata')
+        expect(WebMock).to have_requested(:get, /photoprism\.local/)
+          .with(query: hash_including(s: 'aqnzih81icziiyae'))
+      end
+    end
+
     context 'when filtering out videos' do
       let(:immich_photo) { { 'type' => 'video', 'id' => '1' } }
 

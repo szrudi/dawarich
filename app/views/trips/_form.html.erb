@@ -63,6 +63,41 @@
         <%= form.rich_text_area :description, class: 'trix-content-editor' %>
       </div>
 
+      <% if current_user.immich_integration_configured? || current_user.photoprism_integration_configured? %>
+        <div class="form-control"
+             data-controller="album-search"
+             data-album-search-url-value="<%= albums_api_v1_photos_path %>"
+             data-album-search-api-key-value="<%= current_user.api_key %>"
+             data-album-search-immich-url-value="<%= current_user.safe_settings.immich_url %>"
+             data-album-search-photoprism-url-value="<%= current_user.safe_settings.photoprism_url %>">
+          <%= form.label :photo_album_id, "Photo album (optional)", for: "trip_photo_album_search" %>
+          <div class="relative">
+            <input type="text"
+                   id="trip_photo_album_search"
+                   class="input input-bordered w-full pr-10"
+                   placeholder="Search albums, or paste an album URL…"
+                   value="<%= trip.photo_album_name || trip.photo_album_id %>"
+                   autocomplete="off"
+                   data-album-search-target="input"
+                   data-action="focus->album-search#open input->album-search#filter keydown->album-search#keydown">
+            <button type="button"
+                    class="btn btn-ghost btn-xs absolute right-2 top-1/2 -translate-y-1/2"
+                    title="Clear album"
+                    data-action="album-search#clear">✕</button>
+            <ul class="menu menu-sm bg-base-200 rounded-box absolute z-50 w-full max-h-60 overflow-y-auto shadow mt-1 flex-nowrap hidden"
+                data-album-search-target="list"></ul>
+          </div>
+          <%= form.hidden_field :photo_album_source, data: { album_search_target: "source" } %>
+          <%= form.hidden_field :photo_album_id, data: { album_search_target: "id" } %>
+          <%= form.hidden_field :photo_album_name, data: { album_search_target: "name" } %>
+          <label class="label">
+            <span class="label-text-alt">
+              Only photos from this album will be shown on the trip page and its shared version.
+            </span>
+          </label>
+        </div>
+      <% end %>
+
       <div>
         <%= form.submit class: "rounded-lg py-3 px-5 bg-blue-600 text-white inline-block font-medium cursor-pointer" %>
       </div>

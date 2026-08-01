@@ -100,6 +100,13 @@ RSpec.describe 'Api::V1::PhotosController', type: :request do
                 description: 'Start date in ISO8601 format, e.g. 2024-01-01'
       parameter name: :end_date, in: :query, type: :string, required: true,
                 description: 'End date in ISO8601 format, e.g. 2024-01-02'
+      parameter name: :album_source, in: :query, type: :string, required: false,
+                enum: %w[immich photoprism],
+                description: 'Limit results to one photo album: the album source service. ' \
+                             'Must be sent together with album_id.'
+      parameter name: :album_id, in: :query, type: :string, required: false,
+                description: 'Limit results to one photo album: the album id in the source service. ' \
+                             'Must be sent together with album_source.'
 
       response '200', 'photos found' do
         schema type: :array,

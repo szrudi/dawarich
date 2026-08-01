@@ -2686,6 +2686,65 @@ paths:
                   isorcv: '2024-02-03T13:00:03Z'
                   isotst: '2024-02-03T13:00:03Z'
                   disptst: '2024-02-03 13:00:03'
+  "/api/v1/photos/albums":
+    get:
+      summary: Lists photo albums
+      tags:
+      - Photos
+      description: Returns albums from connected photo services (Immich, PhotoPrism).
+        Albums can be attached to a trip to limit its photos to that album.
+      parameters:
+      - name: api_key
+        in: query
+        required: true
+        description: API Key
+        schema:
+          type: string
+      responses:
+        '200':
+          description: albums found
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    source:
+                      type: string
+                      enum:
+                      - immich
+                      - photoprism
+                      description: Photo source service
+                    id:
+                      type: string
+                      description: Album ID in the source service
+                    name:
+                      type: string
+                      description: Album title
+                    photo_count:
+                      type: integer
+                      nullable: true
+                      description: Number of photos in the album
+                  required:
+                  - source
+                  - id
+                  - name
+        '401':
+          description: no photo integration configured
+        '403':
+          description: pro plan required (cloud lite users)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  upgrade_url:
+                    type: string
   "/api/v1/photos":
     get:
       summary: Lists photos
@@ -2710,6 +2769,23 @@ paths:
         in: query
         required: true
         description: End date in ISO8601 format, e.g. 2024-01-02
+        schema:
+          type: string
+      - name: album_source
+        in: query
+        required: false
+        enum:
+        - immich
+        - photoprism
+        description: "Limit results to one photo album: the album source service.
+          Must be sent together with album_id.:\n * `immich` \n * `photoprism` \n "
+        schema:
+          type: string
+      - name: album_id
+        in: query
+        required: false
+        description: 'Limit results to one photo album: the album id in the source
+          service. Must be sent together with album_source.'
         schema:
           type: string
       responses:

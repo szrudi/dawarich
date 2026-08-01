@@ -7,23 +7,38 @@
 class Photoprism::RequestPhotos
   include SslConfigurable
 
-  attr_reader :user, :photoprism_api_base_url, :photoprism_api_key, :start_date, :end_date
+  attr_reader :user, :photoprism_api_base_url, :photoprism_api_key, :start_date, :end_date, :album_uid
 
-  def initialize(user, start_date: '1970-01-01', end_date: nil)
+  def initialize(user, start_date: '1970-01-01', end_date: nil, album_uid: nil)
     @user = user
     @photoprism_api_base_url = "#{user.safe_settings.photoprism_url}/api/v1/photos"
     @photoprism_api_key = user.safe_settings.photoprism_api_key
     @start_date = start_date.presence || '1970-01-01'
     @end_date = end_date
+    @album_uid = album_uid
   end
 
   def call
     raise ArgumentError, 'Photoprism URL is missing' if user.safe_settings.photoprism_url.blank?
     raise ArgumentError, 'Photoprism API key is missing' if photoprism_api_key.blank?
 
+    # Fail closed when the album can't be confirmed to exist: a deleted or
+    # foreign album must yield no photos, not the unfiltered window. The `s`
+    # scope itself is trusted for membership — it predates the PhotoPrism
+    # release this integration targets by years.
+    return [] if album_uid.present? && !album_exists?
+
     data = retrieve_photoprism_data
 
     return [] if data.blank? || data[0]['error'].present?
+
+    # Album mode trusts the server-side album scope and the widened day
+    # bounds instead of the wall-clock re-filter below: TakenAtLocal is a
+    # local wall-clock string, so comparing it against the trip's UTC
+    # instants drops every photo whose timezone differs from the trip's by
+    # more than the window slack (a 2h trip photographed at UTC+4 loses all
+    # its photos). The trip page still only renders the trip's own days.
+    return data if album_uid.present?
 
     time_framed_data(data, start_date, end_date)
   end
@@ -87,7 +102,8 @@ class Photoprism::RequestPhotos
 
   def request_params(offset = 0)
     params = offset.zero? ? default_params : default_params.merge(offset: offset)
-    params[:before] = (end_date.to_date + 1.day).iso8601 if end_date.present?
+    params[:before] = before_param if end_date.present?
+    params[:s] = album_uid if album_uid.present?
     params
   end
 
@@ -96,9 +112,25 @@ class Photoprism::RequestPhotos
       q: '',
       public: true,
       quality: 3,
-      after: start_date.to_date.iso8601,
+      after: after_param,
       count: 1000
     }
+  end
+
+  # Album mode widens both bounds by one extra day so that photos whose
+  # wall-clock capture time sits up to a full timezone offset outside the
+  # trip's exact window are still fetched — album membership (the `s` scope)
+  # is the real filter. See the matching comment in #call.
+  def after_param
+    date = start_date.to_date
+    date -= 1 if album_uid.present?
+    date.iso8601
+  end
+
+  def before_param
+    date = end_date.to_date + 1.day
+    date += 1 if album_uid.present?
+    date.iso8601
   end
 
   def time_framed_data(data, start_date, end_date)
@@ -113,5 +145,20 @@ class Photoprism::RequestPhotos
     preview_token = headers['X-Preview-Token']
 
     Photoprism::CachePreviewToken.new(user, preview_token).call
+  end
+
+  # Existence check for the album scope; positive results are briefly cached
+  # (this runs on every uncached photo search), failures never are.
+  def album_exists?
+    Rails.cache.fetch("photoprism_album_exists/#{user.id}/#{album_uid}", expires_in: 5.minutes) do
+      response = HTTParty.get(
+        "#{user.safe_settings.photoprism_url}/api/v1/albums/#{ERB::Util.url_encode(album_uid)}",
+        http_options_with_ssl(user, :photoprism, { headers: headers, timeout: 10 })
+      )
+      response.success? || nil
+    end
+  rescue HTTParty::Error, Net::OpenTimeout, Net::ReadTimeout, Errno::ECONNREFUSED, SocketError => e
+    Rails.logger.error("Photoprism album existence check failed: #{e.message}")
+    false
   end
 end

@@ -9,12 +9,13 @@ RSpec.describe 'Trip photos use full timestamps when searching for assets' do
     allow(user).to receive(:immich_integration_configured?).and_return(true)
     allow(user).to receive(:photoprism_integration_configured?).and_return(false)
     allow(user).to receive(:api_key).and_return('test-api-key')
+    allow(user).to receive(:timezone_iana).and_return('Etc/UTC')
   end
 
   context 'when a trip spans hours within a single day' do
     let(:started_at) { Time.utc(2024, 3, 29, 8, 0, 0) }
     let(:ended_at)   { Time.utc(2024, 3, 29, 20, 0, 0) }
-    let(:trip)       { instance_double('Trip', started_at: started_at, ended_at: ended_at) }
+    let(:trip)       { instance_double('Trip', started_at: started_at, ended_at: ended_at, photo_album: nil) }
 
     it 'passes distinct ISO8601 datetime bounds to Photos::Search' do
       photo_search = instance_double('Photos::Search', call: [])
@@ -24,8 +25,9 @@ RSpec.describe 'Trip photos use full timestamps when searching for assets' do
         expect(kwargs[:start_date]).to eq('2024-03-29T08:00:00Z')
         expect(kwargs[:end_date]).to   eq('2024-03-29T20:00:00Z')
         expect(kwargs[:start_date]).not_to eq(kwargs[:end_date]),
-                                           'sub-day trip bounds collapsed to the same value; downstream Immich/Photoprism ' \
-                                           'filtering will reject every photo because takenAfter == takenBefore'
+                                           'sub-day trip bounds collapsed to the same value; downstream ' \
+                                           'Immich/Photoprism filtering will reject every photo because ' \
+                                           'takenAfter == takenBefore'
         photo_search
       end
 
@@ -36,7 +38,7 @@ RSpec.describe 'Trip photos use full timestamps when searching for assets' do
   context 'when a trip spans multiple days' do
     let(:started_at) { Time.utc(2024, 3, 29, 8, 0, 0) }
     let(:ended_at)   { Time.utc(2024, 4, 2, 20, 0, 0) }
-    let(:trip)       { instance_double('Trip', started_at: started_at, ended_at: ended_at) }
+    let(:trip)       { instance_double('Trip', started_at: started_at, ended_at: ended_at, photo_album: nil) }
 
     it 'still passes ISO8601 datetime bounds (no date-only truncation)' do
       photo_search = instance_double('Photos::Search', call: [])

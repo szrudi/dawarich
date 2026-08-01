@@ -189,6 +189,25 @@ RSpec.describe '/trips', type: :request do
       end
     end
 
+    context 'with a photo album' do
+      it 'creates the trip with the album attached' do
+        post trips_url, params: {
+          trip: {
+            name: 'Album trip',
+            started_at: 1.week.ago,
+            ended_at: 6.days.ago,
+            photo_album_source: 'photoprism',
+            photo_album_id: 'aqnzih81icziiyae',
+            photo_album_name: 'Belgium 2026'
+          }
+        }
+
+        trip = Trip.order(:created_at).last
+        expect(trip.photo_album).to eq(source: 'photoprism', id: 'aqnzih81icziiyae')
+        expect(trip.photo_album_name).to eq('Belgium 2026')
+      end
+    end
+
     context 'with invalid parameters' do
       it 'does not create a new Trip' do
         expect do
@@ -227,6 +246,53 @@ RSpec.describe '/trips', type: :request do
         trip.reload
 
         expect(response).to redirect_to(trip_url(trip))
+      end
+
+      it 'updates the photo album' do
+        patch trip_url(trip), params: {
+          trip: {
+            photo_album_source: 'immich',
+            photo_album_id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c',
+            photo_album_name: 'Belgium trip 2026'
+          }
+        }
+        trip.reload
+
+        expect(trip.photo_album).to eq(source: 'immich', id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c')
+        expect(trip.photo_album_name).to eq('Belgium trip 2026')
+      end
+
+      it 'clears a stale cached name when a new album id is submitted without a name' do
+        trip.update!(photo_album_source: :immich, photo_album_id: 'abc-123', photo_album_name: 'Old')
+
+        patch trip_url(trip), params: { trip: { photo_album_id: 'def-456' } }
+        trip.reload
+
+        expect(trip.photo_album_id).to eq('def-456')
+        expect(trip.photo_album_name).to be_nil
+      end
+
+      it 'keeps a resubmitted identical name when the album id changes' do
+        trip.update!(photo_album_source: :immich, photo_album_id: 'abc-123', photo_album_name: 'Summer')
+
+        patch trip_url(trip), params: {
+          trip: { photo_album_source: 'immich', photo_album_id: 'def-456', photo_album_name: 'Summer' }
+        }
+        trip.reload
+
+        expect(trip.photo_album_id).to eq('def-456')
+        expect(trip.photo_album_name).to eq('Summer')
+      end
+
+      it 'clears the photo album when blank values are submitted' do
+        trip.update!(photo_album_source: :immich, photo_album_id: 'abc-123', photo_album_name: 'Old')
+
+        patch trip_url(trip), params: {
+          trip: { photo_album_source: '', photo_album_id: '', photo_album_name: '' }
+        }
+        trip.reload
+
+        expect(trip.photo_album).to be_nil
       end
     end
 

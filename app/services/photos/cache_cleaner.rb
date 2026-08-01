@@ -16,5 +16,9 @@ class Photos::CacheCleaner
 
     Rails.cache.delete_matched("photos_#{user.id}_*")
     Rails.cache.delete_matched("photo_thumbnail_#{user.id}_*")
+    Rails.cache.delete_matched("photos_search/#{user.id}/*")
+    Rails.cache.delete_matched("photos_albums/#{user.id}/*")
+    Rails.cache.delete_matched("immich_album_assets/#{user.id}/*")
+    Rails.cache.delete_matched("photoprism_album_exists/#{user.id}/*")
   end
 end

@@ -84,6 +84,72 @@ RSpec.describe 'Api::V1::Shared::Photos', type: :request do
     end
   end
 
+  context 'when the trip has a photo album' do
+    let(:owner) { create(:user, :with_immich_integration) }
+    let(:trip) do
+      create(:trip, user: owner,
+                    photo_album_source: :immich,
+                    photo_album_id: '0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c',
+                    photo_album_name: 'Belgium trip 2026')
+    end
+    let(:link) do
+      create(:shared_link, user: owner, resource_type: :trip, resource_id: trip.id,
+                           settings: { 'show_photos' => true })
+    end
+
+    before do
+      stub_request(:post, 'https://immich.example.com/api/search/metadata')
+        .to_return(status: 200, body: { assets: { items: [] } }.to_json,
+                   headers: { 'content-type' => 'application/json' })
+      stub_request(:get, %r{immich\.example\.com/api/albums/})
+        .to_return(status: 200, body: { assets: [] }.to_json,
+                   headers: { 'content-type' => 'application/json' })
+    end
+
+    it 'requests only photos from that album' do
+      get "/api/v1/shared/#{link.id}/photos"
+
+      expect(response).to have_http_status(:ok)
+      expect(WebMock).to(
+        have_requested(:post, 'https://immich.example.com/api/search/metadata')
+          .with { |req| JSON.parse(req.body)['albumIds'] == ['0e214cbd-6a2f-4f2e-a44e-a1f70bcecf5c'] }
+          .at_least_once
+      )
+    end
+
+    it 'excludes photos the server returned that are not album members' do
+      taken_at = (trip.started_at + 2.hours).utc.iso8601
+      member = { 'id' => 'member-1', 'type' => 'IMAGE', 'fileCreatedAt' => taken_at,
+                 'exifInfo' => { 'latitude' => 52.0, 'longitude' => 13.0 } }
+      outsider = { 'id' => 'outsider-1', 'type' => 'IMAGE', 'fileCreatedAt' => taken_at,
+                   'exifInfo' => { 'latitude' => 52.5, 'longitude' => 13.5 } }
+      stub_request(:post, 'https://immich.example.com/api/search/metadata')
+        .to_return(
+          { status: 200, body: { assets: { items: [member, outsider] } }.to_json,
+            headers: { 'content-type' => 'application/json' } },
+          { status: 200, body: { assets: { items: [] } }.to_json,
+            headers: { 'content-type' => 'application/json' } }
+        )
+      stub_request(:get, %r{immich\.example\.com/api/albums/})
+        .to_return(status: 200, body: { assets: [{ id: 'member-1' }] }.to_json,
+                   headers: { 'content-type' => 'application/json' })
+
+      get "/api/v1/shared/#{link.id}/photos"
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body).map { |p| p['id'] }).to eq(['member-1'])
+    end
+
+    it 'returns no photos when the album asset list cannot be fetched' do
+      stub_request(:get, %r{immich\.example\.com/api/albums/}).to_return(status: 500, body: '')
+
+      get "/api/v1/shared/#{link.id}/photos"
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)).to eq([])
+    end
+  end
+
   context 'when a photo falls inside a privacy zone' do
     let(:link) do
       create(:shared_link, user: owner, resource_type: :trip, resource_id: trip.id,
@@ -135,12 +201,28 @@ RSpec.describe 'Api::V1::Shared::Photos', type: :request do
     end
 
     it 'searches photos within the track start_at..end_at range' do
-      expect(Photos::Search).to receive(:new).with(
-        owner, start_date: track.start_at.iso8601, end_date: track.end_at.iso8601
-      ).and_return(instance_double(Photos::Search, call: found_photos))
+      # Undo this context's Photos::Search stub — this test asserts the real
+      # outgoing HTTP request.
+      allow(Photos::Search).to receive(:new).and_call_original
+      immich_owner = create(:user, :with_immich_integration)
+      immich_track = create(:track, user: immich_owner,
+                                    start_at: Time.utc(2026, 4, 1), end_at: Time.utc(2026, 4, 14))
+      immich_link = create(:shared_link, user: immich_owner, resource_type: :track,
+                                         resource_id: immich_track.id, settings: { 'show_photos' => true })
+      stub_request(:post, 'https://immich.example.com/api/search/metadata')
+        .to_return(status: 200, body: { assets: { items: [] } }.to_json,
+                   headers: { 'content-type' => 'application/json' })
 
-      get "/api/v1/shared/#{link.id}/photos"
+      get "/api/v1/shared/#{immich_link.id}/photos"
+
       expect(response).to have_http_status(:ok)
+      expect(WebMock).to(
+        have_requested(:post, 'https://immich.example.com/api/search/metadata')
+          .with do |req|
+            body = JSON.parse(req.body)
+            body['takenAfter'] == '2026-04-01T00:00:00Z' && body['takenBefore'] == '2026-04-14T00:00:00Z'
+          end
+      )
     end
   end
 end

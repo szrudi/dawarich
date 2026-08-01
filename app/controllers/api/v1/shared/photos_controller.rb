@@ -18,7 +18,7 @@ module Api
           return head(:not_found) unless ctx.show_photos?
           return head(:not_found) unless allowed_photo?(params[:photo_id], params[:source])
 
-          upstream = Photos::Thumbnail.new(link.user, params[:source], params[:photo_id]).call
+          upstream = ::Photos::Thumbnail.new(link.user, params[:source], params[:photo_id]).call
           return head(:not_found) unless upstream.success?
 
           send_data upstream.body, type: 'image/jpeg', disposition: 'inline'
@@ -55,7 +55,8 @@ module Api
         end
 
         def allowed_ids_cache_key
-          "shared_link/#{link.id}/photo_ids/#{privacy_zones_fingerprint}"
+          album = photo_album
+          "shared_link/#{link.id}/photo_ids/#{album&.dig(:source)}/#{album&.dig(:id)}/#{privacy_zones_fingerprint}"
         end
 
         def privacy_zones_fingerprint
@@ -68,7 +69,16 @@ module Api
           range = photo_range
           return [] if range.nil?
 
-          Photos::Search.cached(link.user, start_date: range.first, end_date: range.last)
+          ::Photos::Search.cached(link.user, start_date: range.first, end_date: range.last,
+                                             album: photo_album, timezone: link.user.timezone_iana)
+        end
+
+        # Memoized: this runs on the thumbnail hot path (once per image), and
+        # SharedLink#resource issues a fresh Trip query on every call.
+        def photo_album
+          return @photo_album if defined?(@photo_album)
+
+          @photo_album = link.resource_type.to_sym == :trip ? link.resource&.photo_album : nil
         end
 
         def photo_range

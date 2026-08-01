@@ -9,7 +9,9 @@
      data-trip-maplibre-ended-at-value="<%= @trip.ended_at.iso8601 %>"
      data-trip-maplibre-trip-id-value="<%= @trip.id %>"
      data-trip-maplibre-path-data-value="<%= @trip.path&.coordinates&.to_json %>"
-     data-trip-maplibre-map-style-value="<%= current_user.safe_settings.settings['maps_maplibre_style'] || 'light' %>">
+     data-trip-maplibre-map-style-value="<%= current_user.safe_settings.settings['maps_maplibre_style'] || 'light' %>"
+     data-trip-maplibre-photo-album-source-value="<%= @trip.photo_album&.dig(:source) %>"
+     data-trip-maplibre-photo-album-id-value="<%= @trip.photo_album&.dig(:id) %>">
 
   <%# Side-by-side layout: map card left (capped to viewport), scrollable content right %>
   <div class="flex flex-col lg:flex-row gap-6 lg:h-[calc(100dvh-9.75rem)]">
@@ -202,11 +204,28 @@
       <% end %>
 
       <%# Photo sources %>
-      <% if @photo_sources.any? %>
+      <%# The album badge and link render even when the album yielded no
+          photos — that empty gallery is exactly when the user needs the cue
+          that an album filter is active. %>
+      <% if @photo_sources.any? || @trip.photo_album %>
         <div class="mb-6">
-          <div class="flex flex-wrap gap-2">
-            <% @photo_sources.each do |source| %>
-              <%= link_to photo_search_url(source, current_user.settings, @trip.started_at, @trip.ended_at),
+          <div class="flex flex-wrap gap-2 items-center">
+            <% if @trip.photo_album %>
+              <span class="badge badge-ghost gap-1">
+                <%= icon 'camera', class: 'w-4 h-4' %> Album: <%= @trip.photo_album_name || @trip.photo_album_id %>
+              </span>
+            <% end %>
+            <% link_sources = @photo_sources.presence || [@trip.photo_album[:source]] %>
+            <% link_sources.each do |source| %>
+              <%# No external link when the source's integration was removed —
+                  its base URL is gone, so the href would be a dead relative path. %>
+              <% next if current_user.settings["#{source}_url"].blank? %>
+              <% link_url = if @trip.photo_album && @trip.photo_album[:source] == source
+                              photo_album_url(source, current_user.settings, @trip.photo_album_id)
+                            else
+                              photo_search_url(source, current_user.settings, @trip.started_at, @trip.ended_at)
+                            end %>
+              <%= link_to link_url,
                   class: "btn btn-sm btn-outline gap-1",
                   target: "_blank",
                   rel: "noopener" do %>

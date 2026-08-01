@@ -25,6 +25,15 @@ module TripsHelper
     end
   end
 
+  def photo_album_url(source, settings, album_id)
+    case source
+    when 'immich'
+      "#{settings['immich_url'].to_s.chomp('/')}/albums/#{album_id}"
+    when 'photoprism'
+      "#{settings['photoprism_url'].to_s.chomp('/')}/library/albums/#{album_id}/view"
+    end
+  end
+
   def trip_duration(trip)
     start_time = trip.started_at.to_time
     end_time = trip.ended_at.to_time

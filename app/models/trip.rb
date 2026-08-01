@@ -14,7 +14,16 @@ class Trip < ApplicationRecord
   has_many :shared_links, -> { where(resource_type: SharedLink.resource_types[:trip]) },
            foreign_key: :resource_id, inverse_of: false, dependent: :destroy
 
+  enum :photo_album_source, { immich: 0, photoprism: 1 }, prefix: :photo_album_source,
+                                                          validate: { allow_nil: true }
+
+  normalizes :photo_album_id, :photo_album_name, with: ->(value) { value.to_s.strip.presence }
+
   validates :name, :started_at, :ended_at, presence: true
+  validates :photo_album_id, presence: true, if: -> { photo_album_source.present? }
+  validates :photo_album_source, presence: true, if: -> { photo_album_id.present? }
+  validates :photo_album_id, format: { with: /\A[0-9a-zA-Z-]{1,64}\z/ }, allow_blank: true
+  validates :photo_album_name, length: { maximum: 255 }
   validate :started_at_before_ended_at
 
   after_create :enqueue_calculation_jobs, unless: :demo?
@@ -53,6 +62,12 @@ class Trip < ApplicationRecord
 
   def calculate_countries
     self.visited_countries = points.pluck(:country_name).uniq.compact
+  end
+
+  def photo_album
+    return nil if photo_album_source.blank? || photo_album_id.blank?
+
+    { source: photo_album_source, id: photo_album_id }
   end
 
   private

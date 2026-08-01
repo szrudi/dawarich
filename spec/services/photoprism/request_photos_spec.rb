@@ -201,6 +201,71 @@ RSpec.describe Photoprism::RequestPhotos do
       end
     end
 
+    context 'when an album uid is given' do
+      let(:service) do
+        described_class.new(user, start_date: start_date, end_date: end_date, album_uid: 'aqnzih81icziiyae')
+      end
+
+      before do
+        stub_request(:get, %r{photoprism\.local/api/v1/albums/aqnzih81icziiyae}).to_return(
+          status: 200, body: { 'UID' => 'aqnzih81icziiyae' }.to_json,
+          headers: { 'Content-Type' => 'application/json' }
+        )
+        stub_request(:get, %r{photoprism\.local/api/v1/photos}).to_return(
+          status: 200, body: [].to_json, headers: { 'Content-Type' => 'application/json' }
+        )
+      end
+
+      it 'scopes the request to that album' do
+        service.call
+
+        expect(WebMock).to have_requested(:get, %r{photoprism\.local/api/v1/photos})
+          .with(query: hash_including(s: 'aqnzih81icziiyae'))
+      end
+
+      it 'widens the date window by one extra day on each side' do
+        service.call
+
+        expect(WebMock).to have_requested(:get, %r{photoprism\.local/api/v1/photos})
+          .with(query: hash_including(after: '2023-12-31', before: '2025-01-02'))
+      end
+
+      it 'keeps album photos whose wall-clock TakenAtLocal falls outside the trip window' do
+        out_of_window_photo = mock_photo_response.first.merge(
+          'TakenAt' => '2026-06-01T14:00:00Z', 'TakenAtLocal' => '2026-06-01T18:00:00Z'
+        )
+        stub_request(:get, %r{photoprism\.local/api/v1/photos}).to_return(
+          { status: 200, body: [out_of_window_photo].to_json, headers: { 'Content-Type' => 'application/json' } },
+          { status: 200, body: [].to_json, headers: { 'Content-Type' => 'application/json' } }
+        )
+
+        result = service.call
+
+        expect(result.map { _1['UID'] }).to eq(['psnveqq089xhy1c3'])
+      end
+
+      it 'fails closed and skips the photo search when the album does not exist' do
+        stub_request(:get, %r{photoprism\.local/api/v1/albums/aqnzih81icziiyae})
+          .to_return(status: 404, body: '')
+
+        expect(service.call).to eq([])
+        expect(WebMock).not_to have_requested(:get, %r{photoprism\.local/api/v1/photos})
+      end
+    end
+
+    context 'when no album uid is given' do
+      it 'does not send an album scope' do
+        stub_request(:any, /photoprism\.local/).to_return(
+          status: 200, body: [].to_json, headers: { 'Content-Type' => 'application/json' }
+        )
+
+        service.call
+
+        expect(WebMock).to(have_requested(:get, /photoprism\.local/)
+          .with { |req| !Rack::Utils.parse_query(URI(req.uri.to_s).query).key?('s') })
+      end
+    end
+
     context 'with missing credentials' do
       let(:user) { create(:user, settings: {}) }
 
